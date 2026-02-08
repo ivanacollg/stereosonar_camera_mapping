@@ -1,0 +1,29 @@
+<launch>
+    <!-- Topics -->
+    <arg name="horizontal_sonar_topic" default="/sonar_oculus_node/M750d/ping"/>
+    <arg name="vertical_sonar_topic" default="/sonar_oculus_node/M1200d/ping"/>
+    <arg name="img_topic" default="/camera/image_raw/compressed"/>
+    <arg name="odom_topic" default="/bruce/slam/localization/odom"/>
+    <arg name="segmented_img_topic" default="/sonar_camera_merge/segmented_img/compressed"/>
+    <arg name="merge_cloud_topic" default="/sonar_camera_merge/cloud"/>
+    <arg name="horizontal_feature_image_topic" default="/sonar_camera_merge/horizontal_feature_img/compressed"/>
+    <arg name="vertical_feature_image_topic" default="/sonar_camera_merge/vertical_feature_img/compressed"/>
+    <arg name="environment" default="tank_disks"/>
+
+    <node pkg="stereosonar_camera_merge" name="stereo_merge_node" type="stereo_merge_node.py" output="screen">
+        <param name="publish_rate" type="int" value="5"/>
+
+        <param name="horizontal_sonar_sub" type="str" value="$(arg horizontal_sonar_topic)"/>
+        <param name="vertical_sonar_sub" type="str" value="$(arg vertical_sonar_topic)"/>
+        <param name="odom_sub" type="str" value="$(arg odom_topic)"/>
+        <param name="image_sub" type="str" value="$(arg img_topic)"/>
+        <param name="segmented_image_pub" type="str" value="$(arg segmented_img_topic)"/>
+        <param name="merge_cloud_pub" type="str" value="$(arg merge_cloud_topic)"/>
+        <param name="horizontal_feature_image_pub" type="str" value="$(arg horizontal_feature_image_topic)"/>
+        <param name="vertical_feature_image_pub" type="str" value="$(arg vertical_feature_image_topic)"/>
+
+        <rosparam file="$(find stereosonar_camera_merge)/config/monocular_camera_params_$(arg environment).yaml"/>
+        <rosparam file="$(find stereosonar_camera_merge)/config/sonar_params.yaml"/>
+        <rosparam file="$(find stereosonar_camera_merge)/config/stereo_merge_params_$(arg environment).yaml"/>
+    </node>
+</launch>

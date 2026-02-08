@@ -1,0 +1,24 @@
+<launch>
+    <arg name="rectification" default="true"/>
+    <arg name="rviz" default="true"/>
+    <arg name="mapping" default="true"/>
+    <arg name="environment" default="marina"/><!-- tank_disks or marina-->
+    <param name="/use_sim_time" value="true"/>
+
+    <node if="$(arg rviz)" type="rviz" name="rviz" pkg="rviz" args="-d $(find stereosonar_camera_merge)/rviz/stereo_merge.rviz" />
+
+    <!-- Used for 5 meter ros bags-->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="world2baselink" args="0 0 0 0 0 0 map odom" />
+    <!--node pkg="tf2_ros" type="static_transform_publisher" name="world2baselink" args="0 0 0 0 0 0 map world" /-->
+
+
+    <include file="$(find stereosonar_camera_merge)/launch/merge_node.launch">
+        <arg name="environment" default="$(arg environment)"/>
+        <arg name="odom_topic" default="/odom"/>
+    </include>
+
+    <include if="$(arg mapping)" file="$(find gpcoctomap)/launch/mapping_server.launch">
+        <arg name="environment" default="$(arg environment)"/>
+    </include>
+
+</launch>

@@ -1,0 +1,26 @@
+#define the sonar parameters
+horizontalFOV: 130.0
+transformation: -0.1
+verticalAperture: 20.0
+sonarRange: 3.0
+
+# Constant false alarm rate (CFAR) params for feature extraction
+horizontal:
+  threshold: 65
+  CFAR:
+    Ntc: 40 # number of training cells
+    Ngc: 10 # number of guard cells
+    Pfa: 0.1 #false alarm rate
+    rank: 10 # matrix rank
+
+# Constant false alarm rate (CFAR) params for feature extraction
+vertical:
+  threshold: 65
+  CFAR:
+    Ntc: 40 # number of training cells
+    Ngc: 10 # number of guard cells
+    Pfa: 0.1 #false alarm rate
+    rank: 10 # matrix rank
+
+# Publish sonar feature image -> computationally expensive
+sonar_features: True
