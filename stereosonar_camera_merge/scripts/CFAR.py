@@ -2,7 +2,7 @@ import math
 import numpy as np
 from scipy.optimize import root
 
-from sonar_camera_merge import cfar
+from stereosonar_camera_merge import cfar
 
 class CFAR(object):
     """

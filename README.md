@@ -4,6 +4,18 @@ This repo contains the code derived from the paper **"Towards Versatile Opti-Aco
   
 You are viewing the ROS 1 version of this code, ROS2 version comming soon.
 
+# Dependencies
+This codebase is ROS native and will require a ROS installation. It can be used without ROS, but will require some work.
+
+- ROS Noetic
+- Python3
+
+Dependencies:
+
+    sudo pip install catkin_tools scipy open3d ultralytics
+
+    sudo apt-get install ros-noetic-octomap* ros-noetic-pybind11-catkin
+
 # Set Up
 ```
     mkdir -p catkin_ws/src
@@ -61,10 +73,10 @@ If you use this repo or any of the data provided please cite the following work:
 # Documentation
 This repo contains three packages:
 ### stereosonar_camer_merge
-    This package takes in sensor infomation (orthogonal sonars, camera and odometry), performs sensor fussion and outputs a pointcloud with confidence values. 
+This package takes in sensor infomation (orthogonal sonars, camera and odometry), performs sensor fussion and outputs a pointcloud with confidence values. 
 ### gpcoctomap
-    This packages takes in a pointcloud with confidence values and performes confidence driven Gaussian Pocess Volumetric Mapping. 
+This packages takes in a pointcloud with confidence values and performes confidence driven Gaussian Pocess Volumetric Mapping. 
 ### sonar_oculus
-    This package declares the oculus_sonar msg type used in this work. 
+This package declares the oculus_sonar msg type used in this work. 
 
 
