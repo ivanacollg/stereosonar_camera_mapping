@@ -27,11 +27,11 @@ Dependencies:
 ```
 
 # Data
-This [data folder](https://drive.google.com/drive/folders/1qGcltj2GMxAta1ByrptC76vznj0ym_UQ?usp=sharing) constains most of the data used for the paper "Towards Versatile Opti-Acoustic Sensor Fusion and Volumetric Mapping for Safe Underwater Navigation" (2026), which presents a volumetric mapping framework that fuses a stereo sonar pair with a monocular camera to enable safe underwater navigation under varying visibility conditions. 
+This [data folder](https://drive.google.com/drive/folders/1qGcltj2GMxAta1ByrptC76vznj0ym_UQ?usp=sharing) contains  data used for the paper "Towards Versatile Opti-Acoustic Sensor Fusion and Volumetric Mapping for Safe Underwater Navigation" (2026), which presents a volumetric mapping framework that fuses a stereo sonar pair with a monocular camera to enable safe underwater navigation under varying visibility conditions. 
 
 Each folder contains sensor data from each scenario shown in the paper: 
-- tank_disk
-- marina_pier
+- tank_disks
+- marina
 
 Each folder contains original ROS1 .bag data and converted data to ROS2 folder. 
 
