@@ -7,10 +7,7 @@
 
     <node if="$(arg rviz)" type="rviz" name="rviz" pkg="rviz" args="-d $(find stereosonar_camera_merge)/rviz/stereo_merge.rviz" />
 
-    <!-- Used for 5 meter ros bags-->
     <node pkg="tf2_ros" type="static_transform_publisher" name="world2baselink" args="0 0 0 0 0 0 map odom" />
-    <!--node pkg="tf2_ros" type="static_transform_publisher" name="world2baselink" args="0 0 0 0 0 0 map world" /-->
-
 
     <include file="$(find stereosonar_camera_merge)/launch/merge_node.launch">
         <arg name="environment" default="$(arg environment)"/>

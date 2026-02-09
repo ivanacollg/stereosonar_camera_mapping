@@ -22,26 +22,23 @@ class MergeFunctions:
     A class to handle merging of sonar and camera data for underwater robotics applications.
 
     Attributes:
-        Ts_c (np.ndarray): Transformation matrix from sonar to camera frame.
-        minpixnum (int): Minimum number of pixels required for a valid segmented region.
-        threshold_inv (int): Threshold value for image segmentation.
-        sonar_msg (object): Holds sonar message data.
-        pose (object): Holds robot pose data.
-        image (np.ndarray): Holds the captured image data.
-        color_map (np.ndarray): Predefined color mapping for visualizing clusters.
-        xyz_aggregated (np.ndarray): Stores the aggregated 3D point cloud data.
-        lock (threading.RLock): Lock for handling concurrency.
+        translation_horizontal (np.ndarray): translation vector from horizontal sonar to camera frame.
+        rotation_horizontal (np.ndarray): rotation matrix from horizontal sonar to camera frame.
+        translation_vertical (np.ndarray): translation vector from vertical sonar to camera frame.
+        rotation_vertical (np.ndarray): rotation matrix from vertical sonar to camera frame.
+        conf_ss (float): confidence value for stereo sonar points
+        conf_s (float): confidence value for sonar to image projection points
+        conf_e (float): confidence value for sonar expansion points
+        stereo_sonar (StereoSonarRGB): StereoSonarRGB class object
+
     """
-    def __init__(self, Ts_c_horizontal, Ts_c_vertical, minpixnum, threshold_inv, boundry, yolo_segmentation, conf_ss, conf_s, conf_e):
+    def __init__(self, Ts_c_horizontal, Ts_c_vertical, conf_ss, conf_s, conf_e):
         """
         Initializes the MergeFunctions class.
 
         Args:
-            Ts_c (np.ndarray): Transformation matrix from sonar to camera frame.
-            minpixnum (int): Minimum number of pixels for valid segmentation.
-            threshold_inv (int): Threshold for image preprocessing.
-            boundry (int): Boundry image threshold
-            yolo_segmentation (bool): activate or not yolo segmentation (resomended True)
+            Ts_c_horizontal (np.ndarray): Transformation matrix from horizontal sonar to camera frame.
+            Ts_c_vertical (np.ndarray): Transformation matrix from vertical sonar to camera frame.
             conf_ss (float): confidence value of stee sonar pointcloud
             conf_s (float): confidence value of sonar-to-image pointcloud
             conf_e (float): confidence vaue of sonar expanded pointcloud
@@ -55,39 +52,8 @@ class MergeFunctions:
         self.conf_s = 1/conf_s
         self.conf_ss = 1/conf_ss
         self.conf_e = 1/conf_e
-        # Initialize sensor information
-        self.sonar_msg = None
-        self.pose = None
-        self.image = None
-
-        self.minpixnum=minpixnum
-        self.threshold_inv = threshold_inv
-        self.boundry = boundry
-        self.yolo_segmentation = yolo_segmentation
-
-        self.color_map = np.array([
-                    [1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0],
-                    [0.0, 1.0, 0.0],
-                    [0.25,0.75,0.25],
-                    [1.0,1.0,0.0],
-                    [.44,.62,.8118],
-                    [0.8118,0.44,0.62],
-                    [0.62,0.8118,0.44],
-                    [0.75,0.25,0.25],
-                    [0.25,0.75,0.25],
-                    [0.25,0.25,0.75],
-                    [0.1,0.45,0.7],
-                    [0.7,0.45,0.1],
-                    [0.45,0.7,0.1],
-                    [0.45,0.1,0.7],
-                    [0.1,0.7,0.45]])
-                
-                
-        self.xyz_aggregated = np.zeros(0)
-        # the threading lock
-        self.lock = threading.Lock()
-        self.stero_sonar = StereoSonarRGB()
+                       
+        self.stereo_sonar = StereoSonarRGB()
 
     
     def set_camera_params(self, K, D, rgb_width, rgb_height, model_path):
@@ -99,6 +65,7 @@ class MergeFunctions:
             D (np.ndarray): Distortion coefficients.
             rgb_width (int): Width of the RGB image.
             rgb_height (int): Height of the RGB image.
+            model_path (string): path to yolo trained model
         """
         self.monocular_camera = MonocularCamera(K, D, rgb_width, rgb_height, model_path)
     
@@ -114,8 +81,6 @@ class MergeFunctions:
             fast_performance (bool): Determines if fast or detailed perfomanc paramterers are used.
         """
         self.horizontal_sonar = ImagingSonar(sonar_range, detector_threshold, vertical_FOV, sonar_features, fast_performance)
-        #self.lp = LineProfiler()
-        #self.lp.add_function(self.imaging_sonar.get_sonar_scanline)
 
     def set_vertical_sonar_params(self, sonar_range, detector_threshold, vertical_FOV, sonar_features, fast_performance):
         """
@@ -154,55 +119,14 @@ class MergeFunctions:
         """
         self.vertical_sonar.init_CFAR(Ntc, Ngc, Pfa, rank)
 
-    '''
-    def set_sensor_info(self, image, pose, sonar_msg):
-        """
-        Updates sensor information.
 
-        Args:
-            image (np.ndarray): Camera image.
-            pose (object): Pose information of the robot.
-            sonar_msg (object): Sonar message data.
-        """
-        with self.lock:
-            self.image= image
-            self.pose = pose
-            self.sonar_msg = sonar_msg
-    '''
-
-    def rotate_cloud(self, t, R, new_cloud):
-        """
-        Rotates and transforms a point cloud from the body frame to the map frame.
-
-        Args:
-            t (np.ndarray): Translation vector (3x1).
-            R (np.ndarray): Rotation matrix (3x3).
-            new_cloud (np.ndarray): Input point cloud (Nx3).
-
-        Returns:
-            np.ndarray: Transformed point cloud (Nx3).
-        """
-        # Build Homogeneous tranform matrix
-        H = np.row_stack((np.column_stack((R, t.T)), np.array([0, 0, 0, 1])))
-
-        # Change of cloud points to homogeneous
-        x = new_cloud[:, 0]
-        z = new_cloud[:, 2]
-        y = new_cloud[:, 1]
-        xyzw = np.column_stack((x, y, z, np.ones_like(x)))
-       
-        # Transform points to map reference frame
-        xyzw_map = np.matmul(H, xyzw.T).T
-        xyzw_map[:,0] = np.divide(xyzw_map[:, 0], xyzw_map[:, 3])
-        xyzw_map[:,1] = np.divide(xyzw_map[:, 1], xyzw_map[:, 3])
-        xyzw_map[:,2] = np.divide(xyzw_map[:, 2], xyzw_map[:, 3])
-
-        return xyzw_map[:, 0:3]
-
-
-    def merge_data(self, image, pose, horizontal_sonar, vertical_sonar):
+    def merge_data(self, image, horizontal_sonar, vertical_sonar):
         """
         Merges sonar and camera data to generate a 3D point cloud.
+        Args:
+            image (np.ndarray): camera image
+            horizontal_sonar (sonar_oculus msg): Horizonatal sonar msg
+            vertical_sonar (sonar_oculus msg): Vertical sonar msg
 
         Returns:
             tuple:
@@ -212,22 +136,12 @@ class MergeFunctions:
                 - np.ndarray: Feature image from sonar processing.
         """
 
-        if horizontal_sonar is not None and vertical_sonar is not None and image is not None and pose is not None:
+        if horizontal_sonar is not None and vertical_sonar is not None and image is not None:
             stamp = horizontal_sonar.header.stamp
             
             # Apply Yolo segmentation on the RGB image
-            if self.yolo_segmentation:
-                labels, labeled_image = self.monocular_camera.yolo_segment(image)
-                #print("confidences")
-                #print(confidences)
-                thresholded_image = np.ones((self.monocular_camera.height, self.monocular_camera.width)).astype(np.uint8)*255
-            else:
-                # Filter image -> returns black and white image segmenting foreground and background
-                thresholded_image = self.monocular_camera.preprocess(image, self.threshold_inv)
-                # Segment Image -> returns labeled segemnted image and the labels
-                labels, labeled_image = self.monocular_camera.segment_image(thresholded_image)
-
-            #print(labels)
+            labels, labeled_image = self.monocular_camera.yolo_segment(image)
+            thresholded_image = np.ones((self.monocular_camera.height, self.monocular_camera.width)).astype(np.uint8)*255
             
             # decode the compressed horizontal image
             imgHorizontal = np.frombuffer(horizontal_sonar.ping.data, np.uint8)
@@ -245,7 +159,7 @@ class MergeFunctions:
             
             if (labels>1).any():
                 # Get Stereo Sonar matched points, and filtered sonar images
-                stereo_pointcloud, horizontal_feature_image, vertical_feature_image, close_pointcloud, close_points, close_pointcloud_v, close_points_v = self.stero_sonar.run_stereo(imgHorizontal, imgVertical, stamp, horizontal_sonar)
+                stereo_pointcloud, horizontal_feature_image, vertical_feature_image, close_pointcloud, close_points, close_pointcloud_v, close_points_v = self.stereo_sonar.run_stereo(imgHorizontal, imgVertical, stamp, horizontal_sonar)
     
                 if stereo_pointcloud.shape[1] > 0:
 
@@ -277,9 +191,6 @@ class MergeFunctions:
 
                     # Get 2D coordinates
                     xyw = np.matmul(self.monocular_camera.K, extended_coordinates.T).T
-                    #xyw[:,0] = np.divide(xyw[:, 0], xyw[:, 2])
-                    #xyw[:,1] = np.divide(xyw[:, 1], xyw[:, 2])
-                    #xyw[:,2] = np.divide(xyw[:, 2], xyw[:, 2])
                     xyw[:, :2] /= xyw[:, 2:3]  # Vectorized division
                     xy = np.round(xyw)[:,0:2].astype(np.int32)
 
@@ -305,25 +216,16 @@ class MergeFunctions:
                     sonar_points_image[indx_coord[:,0], indx_coord[:,1]] = 255
                     sonar_points_image= sonar_points_image.astype(np.uint8)
 
-                    #depth_img_color[np.where(sonar_points_image==255)]=self.color_map[0]*255
-
                     # Draw the outline
                     cv2.drawContours(depth_img_color, contours_list, -1, color=(0, 23, 223), thickness=3)
-                    #depth_img_color[np.where(overlap_image==255)]=self.color_map[color_indx]*255
-
-                    #print(indx_coord[:,1].shape[0])
-                    #for i in range(indx_coord[:,1].shape[0]):
-                    #    cv2.circle(depth_img_color,(indx_coord[i,1],indx_coord[i,0]), 3, (0,255,0), -1)
 
                     overlap_image = cv2.bitwise_and(sonar_points_image, area_image*255)
 
                     overlap_indices = np.argwhere(overlap_image==255)
-                    #print(len(overlap_indices))
                     # Get Overlap 3D values from depthamp using ovalp indices
                     filtered_pointcloud = depth_map[overlap_indices[:,0], overlap_indices[:,1]]
                     # Get confidence scores at those pixel coordinates
                     conf = np.full((filtered_pointcloud.shape[0], 1), self.conf_ss)
-                    #conf = confidence_image[overlap_indices[:,0], overlap_indices[:,1]]
                     # Append as 4th column to each point (x, y, z, confidence)
                     filtered_pointcloud_with_conf = np.hstack((filtered_pointcloud, conf))
 
@@ -337,9 +239,6 @@ class MergeFunctions:
 
                     # Get 2D coordinates
                     xyw = np.matmul(self.monocular_camera.K, extended_coordinates.T).T
-                    #xyw[:,0] = np.divide(xyw[:, 0], xyw[:, 2])
-                    #xyw[:,1] = np.divide(xyw[:, 1], xyw[:, 2])
-                    #xyw[:,2] = np.divide(xyw[:, 2], xyw[:, 2])
                     xyw[:, :2] /= xyw[:, 2:3]  # Vectorized division
                     xy = np.round(xyw)[:,0:2].astype(np.int32)
 
@@ -367,16 +266,9 @@ class MergeFunctions:
                     sonar_points_image[indx_coord[:,0], indx_coord[:,1]] = 255
                     sonar_points_image= sonar_points_image.astype(np.uint8)
 
-                    #depth_img_color[np.where(sonar_points_image==255)]=self.color_map[0]*255
-
-                    #print(indx_coord[:,1].shape[0])
-                    #for i in range(indx_coord[:,1].shape[0]):
-                    #    cv2.circle(depth_img_color,(indx_coord[i,1],indx_coord[i,0]), 3, (255,0,0), -1)
-
                     overlap_image = cv2.bitwise_and(sonar_points_image, area_image*255)
                     overlap_indices = np.argwhere(overlap_image==255)
                     
-                    #print(len(overlap_indices))
                     # Get Overlap 3D values from depthamp using ovalp indices
                     filtered_pointcloud3 = depth_map[overlap_indices[:,0], overlap_indices[:,1]]
                     # Create a column of 70s
@@ -428,7 +320,6 @@ class MergeFunctions:
                     result = result_struct.view(indx.dtype).reshape(-1, indx.shape[1])
                     # Transpose back if needed
                     indx = tuple(result.T)
-                    #print(indx.shape)
                     
                     # Det distance values of expanded points
                     final_distance_values = depth_image[indx]
@@ -438,9 +329,6 @@ class MergeFunctions:
                     coord_3d = (1/s)*(final_distance_values)*(np.matmul(np.linalg.inv(self.monocular_camera.K),xyw).T)
                     
                     rows, cols = indx# indx = (row_indices, col_indices)
-
-                    #for i in range(len(rows)):
-                    #    cv2.circle(depth_img_color, (cols[i], rows[i]), 3, (0, 0, 255), -1)
                     
                     xyz_cloud = np.matmul((coord_3d-self.translation_horizontal), self.rotation_horizontal)    
                     
@@ -461,9 +349,6 @@ class MergeFunctions:
 
                     # Get 2D coordinates
                     xyw = np.matmul(self.monocular_camera.K, extended_coordinates.T).T
-                    #xyw[:,0] = np.divide(xyw[:, 0], xyw[:, 2])
-                    #xyw[:,1] = np.divide(xyw[:, 1], xyw[:, 2])
-                    #xyw[:,2] = np.divide(xyw[:, 2], xyw[:, 2])
                     xyw[:, :2] /= xyw[:, 2:3]  # Vectorized division
                     xy = np.round(xyw)[:,0:2].astype(np.int32)
 
@@ -490,17 +375,10 @@ class MergeFunctions:
                     sonar_points_image = np.zeros((self.monocular_camera.height, self.monocular_camera.width))
                     sonar_points_image[indx_coord[:,0], indx_coord[:,1]] = 255
                     sonar_points_image= sonar_points_image.astype(np.uint8)
-
-                    #depth_img_color[np.where(sonar_points_image==255)]=self.color_map[0]*255
-
-                    #print(indx_coord[:,1].shape[0])
-                    #for i in range(indx_coord[:,1].shape[0]):
-                    #    cv2.circle(depth_img_color,(indx_coord[i,1],indx_coord[i,0]), 3, (255,255,0), -1)
                     
                     overlap_image = cv2.bitwise_and(sonar_points_image, area_image*255)
                     overlap_indices = np.argwhere(overlap_image==255)
                     
-                    #print(len(overlap_indices))
                     # Get Overlap 3D values from depthamp using ovalp indices
                     filtered_pointcloud4 = depth_map[overlap_indices[:,0], overlap_indices[:,1]]
                     
@@ -579,16 +457,13 @@ class MergeFunctions:
 
                             rows, cols = indx# indx = (row_indices, col_indices)
 
-                            #for i in range(len(rows)):
-                            #    cv2.circle(depth_img_color, (cols[i], rows[i]), 3, (0, 255, 255), -1)
-
                             new = np.matmul((coord_3d-self.translation_vertical), self.rotation_vertical)  
                             new2 = np.column_stack((new[:, 0], new[:, 2], new[:, 1]))
                             xyz_cloud2 = np.vstack((xyz_cloud2, new2))
                     
 
                     xyz_cloud2 = xyz_cloud2[1:]
-                    # Create a column of 60s
+                    # Create a column 
                     conf = np.full((xyz_cloud2.shape[0], 1), self.conf_e)
 
                     # Concatenate to form a (100, 4) array
@@ -597,20 +472,9 @@ class MergeFunctions:
                     #merged_cloud = filtered_pointcloud_with_conf
                     merged_cloud = np.vstack((filtered_pointcloud_with_conf, filtered_pointcloud3_with_conf, filtered_pointcloud4_with_conf, xyz_cloud_with_conf, xyz_cloud_with_conf2))
 
-
-
-
                     ## Transfrom to Sonar frame
                     merged_cloud = merged_cloud[:, 0:4] + np.array([0.3, 0.0, 0.0, 0.0]) #np.matmul((merged_cloud -self.translation), self.rotation)
-                    ## Get translation
-                    #t = np.array([pose.position.x,pose.position.y,pose.position.z])# Centered on robot center
-                    ## Get rotation
-                    ## Convert quaternion to rotation matrix
-                    #quaternion = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
-                    #roll, pitch, yaw = euler_from_quaternion(quaternion)
-                    #R = euler_matrix(roll, 0, yaw)[:3, :3]
-                    #xyz_cloud = self.rotate_cloud(t, R, xyz_cloud)
-                    #merged_cloud = np.hstack((xyz_cloud, merged_cloud[:, 3].reshape(-1, 1)))
+                
 
                     return merged_cloud, depth_img_color, stamp, horizontal_feature_image, vertical_feature_image
                 else:
@@ -618,10 +482,9 @@ class MergeFunctions:
                     return np.zeros(0), image, stamp, horizontal_feature_image, vertical_feature_image
             else:
                 print("No segmentation found, applying original sonar")
-                #stereo_pointcloud, horizontal_feature_image, vertical_feature_image = self.stero_sonar.run_stereo_original(imgHorizontal, imgVertical, stamp, horizontal_sonar)
-                stereo_pointcloud, horizontal_feature_image, vertical_feature_image, _, _, _, _ = self.stero_sonar.run_stereo(imgHorizontal, imgVertical, stamp, horizontal_sonar)
+                stereo_pointcloud, horizontal_feature_image, vertical_feature_image, _, _, _, _ = self.stereo_sonar.run_stereo(imgHorizontal, imgVertical, stamp, horizontal_sonar)
                 if stereo_pointcloud.shape[0] > 0:
-                    # Create a column of 70s
+                    # Create a column
                     conf = np.full((stereo_pointcloud.shape[0], 1), self.conf_ss)
 
                     # Concatenate to form a (100, 4) array

@@ -63,7 +63,7 @@
 - sonarRange: The maximum detection range in meters
 - horizontalFOV: sonar horizontal FOV in degrees
 - verticalAperture: The vertical angular coverage in degrees
-- tranformation: Trasform from horizontal to vertical sonar in meters
+- transformation: Trasform from horizontal to vertical sonar in meters
 
 - threshold: detection strength threshold for the CFAR processing, higher thresholds remove both noise as well as weaker targets in favor of fewer, stronger targets
 - CFAR/Ntc: number of training cells

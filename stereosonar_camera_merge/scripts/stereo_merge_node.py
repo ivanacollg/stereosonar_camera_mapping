@@ -51,7 +51,6 @@ class MergeNode:
         """
         rospy.init_node('stereo_merge_node', anonymous=True)
         self.publish_rate = rospy.get_param("~publish_rate", 5)
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)  # parallel workers
 
         # Subscribers
         horizontal_sonar_sub = Subscriber(rospy.get_param(ns + "horizontal_sonar_sub"), OculusPing)
@@ -77,28 +76,18 @@ class MergeNode:
         Ts_c_vertical = np.array(rospy.get_param(ns + "Ts_c_vertical"), copy=False).reshape((4, 4))
 
         # Get other merge parameters
-        min_pix = rospy.get_param(ns + "min_area")
-        threshold_inv = rospy.get_param(ns + "threshold_inv")
-        boundry = rospy.get_param(ns + "boundry")
         self.fast_performance = rospy.get_param(ns + "fast_performance")
-        #print("fast performance")
-        #print(self.fast_performance)
-        yolo_segmentation = rospy.get_param(ns + "yolo_segmentation")
         # Merge confidence Values
         conf_ss = rospy.get_param(ns + "conf_ss")
         conf_s = rospy.get_param(ns + "conf_s")
         conf_e = rospy.get_param(ns + "conf_e")
-    
         self.scale_factor = 0.5
-        if self.fast_performance:
-            boundry = int(boundry*self.scale_factor)
-            min_pix = int(min_pix*self.scale_factor)
-        self.merge = MergeFunctions(Ts_c_horizontal, Ts_c_vertical, min_pix, threshold_inv, boundry, yolo_segmentation, conf_ss, conf_s, conf_e)
+        self.merge = MergeFunctions(Ts_c_horizontal, Ts_c_vertical, conf_ss, conf_s, conf_e)
 
         # Get monocular camera parameters
         model_name = rospy.get_param(ns + "model_name")
         rospack = rospkg.RosPack()
-        pkg_path = rospack.get_path("stereosonar_camera_merge")  # Replace with your package name
+        pkg_path = rospack.get_path("stereosonar_camera_merge") 
         model_path = os.path.join(pkg_path, "models", model_name)  
         rgb_width = rospy.get_param(ns + "image_width")
         rgb_height = rospy.get_param(ns + "image_height")
@@ -145,21 +134,16 @@ class MergeNode:
         # the threading lock
         self.lock = threading.Lock()
         self.num_workers = 4 
-        #self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers)  # Number of parallel threads
         self.latest_data = None  # Store the latest sensor data
         self.hz = 0.0
         self.calls = 0.0
         self.times = []
-        #self.positions = []
-        #self.orientations = []
+
         
         # CV bridge
         self.bridge = cv_bridge.CvBridge()
 
         # Initialize sensor information
-        #self.image = None
-        #self.pose = None
-        #self.stamp = None
         self.last_position = None
         self.last_yaw = None
 
@@ -167,21 +151,11 @@ class MergeNode:
         self.header = Header()
         self.image_msg = CompressedImage()
         self.image_msg.format = "jpeg"
-
-        #self.profiler = cProfile.Profile()
-        #self.lp = LineProfiler()
-        #self.lp.add_function(self.merge.merge_data)
         
     def __del__(self):
         # After collecting all times
         avg_time = np.mean(self.times)
-        std_time = np.std(self.times)        # population stdev
-        # std_time = np.std(self.times, ddof=1)  # sample stdev
-
-        #rospy.loginfo(f"Final Average merge_data() time: {avg_time:.4f} s")
-        #rospy.loginfo(f"Final StdDev merge_data() time: {std_time:.4f} s")
-        #rospy.loginfo(f"Number of calls {self.calls}")
-
+        std_time = np.std(self.times)    
         
     def sonar_callback(self, msgHorizontal, msgVertical, image_msg, odom_msg)->None:
         """Called when all synced data is available. Submit job to thread pool."""
@@ -211,41 +185,19 @@ class MergeNode:
         if distance > 0.05 or abs(dtheta) > math.radians(10):  # 5 cm or 10 deg
             image = self.bridge.compressed_imgmsg_to_cv2(image_msg, "bgr8")
             # Bundle data and push to executor
-            data = (image, pose, msgHorizontal, msgVertical, odom_msg.header.stamp)
+            data = (image, msgHorizontal, msgVertical, odom_msg.header.stamp)
             self.process_data(data)
-            #self.executor.submit(self.process_data, data)
             
             self.last_position = (x, y)
             self.last_yaw = yaw
 
 
-            #z = pose.position.z
-            #self.positions.append(np.array([x, y, z]))
-            #self.orientations.append(np.array(r.as_euler("xyz", degrees=False)))
-            #np.save('positions.npy',np.array(self.positions))
-            #np.save('orientations.npy', np.array(self.orientations))
-    
-        #with self.lock:
-        #    self.latest_data = (self.stamp, self.image, self.pose, msgHorizontal, msgVertical)
-
-    #def odom_callback(self, msg:Odometry)->None:
-    #    self.pose = msg.pose.pose
-    #    self.stamp = msg.header.stamp
-    
-    #def image_callback(self, msg):
-    #    #decode the compressed image
-    #    #self.image = self.bridge_instance.compressed_imgmsg_to_cv2(msg, "bgr8")
-    #    """ Efficiently processes incoming images by only decoding when necessary. """
-    #    if self.image is None or msg.data != self.last_image_data:
-    #        self.image = self.bridge_instance.compressed_imgmsg_to_cv2(msg, "bgr8")
-    #        self.last_image_data = msg.data  # Store last image data for comparison
-
     def process_data(self, data):
         """
         Worker function that runs merge_data() in parallel.
         """
-        image, pose, horizontal_sonar, vertical_sonar, stamp = data
-        if image is None or pose is None or  horizontal_sonar is None or vertical_sonar is None:
+        image, horizontal_sonar, vertical_sonar, stamp = data
+        if image is None or  horizontal_sonar is None or vertical_sonar is None:
             return  # No new data available, skip this iteration
 
         #self.lp.enable()
@@ -255,7 +207,7 @@ class MergeNode:
             image = cv2.resize(image, None, fx=self.scale_factor, fy=self.scale_factor, interpolation=cv2.INTER_LINEAR)
         # Start the timer to measure merge_data execution time
         start = time.perf_counter()  # high-res timer
-        point_cloud, segmented_image, stamp2, horizontal_feature_image, vertical_feature_image = self.merge.merge_data(image, pose, horizontal_sonar, vertical_sonar)
+        point_cloud, segmented_image, stamp2, horizontal_feature_image, vertical_feature_image = self.merge.merge_data(image, horizontal_sonar, vertical_sonar)
         elapsed = time.perf_counter() - start
         #self.lp.disable()
         #self.lp.print_stats()
@@ -265,17 +217,6 @@ class MergeNode:
             self.times.append(elapsed)
             self.calls += 1
             #rospy.loginfo(f"Average merge_data() time: {np.mean(self.times)} s")
-
-            #stamp = rospy.Time.now()
-            #t = TransformStamped()
-            #t.header.stamp = stamp
-            #t.header.frame_id = "odom"
-            #t.child_frame_id = "base_link2"
-            #t.transform.translation.x = pose.position.x
-            #t.transform.translation.y = pose.position.y
-            #t.transform.translation.z = pose.position.z
-            #t.transform.rotation = pose.orientation
-            #self.br.sendTransform(t)
 
             # Log the time it took to execute
             self.header.stamp = stamp2

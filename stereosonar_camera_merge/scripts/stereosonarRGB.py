@@ -54,10 +54,6 @@ class StereoSonarRGB:
         self.detector_vertical = CFAR(
             self.tcVertical, self.gcVertical, self.pfaVertical, None
         )
-
-        # define cvbridge instance
-        #self.CVbridge = cv_bridge.CvBridge()
-
         
         # for remapping from polar to cartisian
         self.res = None
@@ -82,45 +78,6 @@ class StereoSonarRGB:
         self.odom = None
         self.odom_new = None
         self.aggregatedCloud = np.zeros(0)
-    
-    def tf_to_map(self, odom):
-        pose = odom.position
-        orientation = odom.orientation
-        # Get translation
-        t = np.array([pose.x,pose.y,pose.z])# Centered on robot center
-        
-        # Get rotation
-        # Convert quaternion to rotation matrix
-        quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
-        roll, pitch, yaw = euler_from_quaternion(quaternion)
-        R = euler_matrix(roll, pitch, yaw)[:3, :3]
-        #R = quaternion_matrix(quaternion)[:3, :3]
-        return t, R
-
-
-    def aggregate_points(self, t, R, new_cloud):
-        # Build Homogeneous tranform matrix
-        H = np.row_stack((np.column_stack((R, t.T)), np.array([0, 0, 0, 1])))
-
-        # Change of cloud points to homogeneous
-        x = new_cloud[:, 0]
-        z = new_cloud[:, 2]
-        y = new_cloud[:, 1]
-        xyzw = np.column_stack((x, y, z, np.ones_like(x)))
-       
-        # Transform points to map reference frame
-        xyzw_map = np.matmul(H, xyzw.T).T
-        xyzw_map[:,0] = np.divide(xyzw_map[:, 0], xyzw_map[:, 3])
-        xyzw_map[:,1] = np.divide(xyzw_map[:, 1], xyzw_map[:, 3])
-        xyzw_map[:,2] = np.divide(xyzw_map[:, 2], xyzw_map[:, 3])
-
-
-        if self.aggregatedCloud.size > 0:
-            cloud = np.row_stack((self.aggregatedCloud, xyzw_map[:, 0:3]))
-        else:
-            cloud =xyzw_map[:, 0:3] 
-
-        return cloud
 
 
     def generate_map_xy(self, ping):
@@ -377,234 +334,7 @@ class StereoSonarRGB:
                                     patchesVertical)
 
         return matches, matches.shape != (0,5)
-    
-    def matchFeatures_original_stereo_sonar(
-        self,
-        rangeHorizontal,  # type: float
-        bearingHorizontal,  # type: float
-        xHorizontal,  # type: float
-        yHorizontal,  # type: float
-        patchesHorizontal,  # type: np.ndarray
-        rangeVertical,  # type: float
-        bearingVertical,  # type: float
-        xVertical,  # type: float
-        yVertical,  # type: float
-        patchesVertical,  # type: np.ndarray
-        uHorizontal,
-        vHorizontal,
-        uVertical,
-        vVertical
-    ):
-        # type: (...) -> np.ndarray
-        """Perform feature matching on sub problems.
 
-        Keyword Parameters:
-        rangeHorizontal -- horizontal sonar range meas (meters)
-        bearingHorizontal -- horizontal sonar bearing meas (degrees)
-        xHorizontal, yHorizontal -- horizontal sonar meas (meters) in cartisian
-        patchesHorizontal -- image patches from horizontal sonar meas
-
-        rangeVertical -- vertical sonar range meas (meters)
-        bearingVertical -- vertical sonar bearing meas (degrees)
-        xVertical, yVertical -- vertical sonar meas (meters) in cartisian
-        patchesVertical -- image patches from vertical sonar meas
-
-        Returns:
-        array of matched features
-        """
-
-        # FIX ME, make the image size a ros param
-        # convert range (meters) to pixels
-        rangeHorizontal_discret = np.round(
-            600 * (rangeHorizontal / self.maxRange_horizontal)
-        )
-        rangeVertical_discret = np.round(600 * (rangeVertical / self.maxRange_vertical))
-        #np.save("horizontal_ranges", rangeHorizontal_discret)
-        #np.save("vertical_ranges", rangeVertical_discret)
-        #np.save("horizontal_ranges2", rangeHorizontal)
-        #np.save("vertical_ranges2", rangeVertical)
-
-        # get the unique range options
-        range_options_horizontal = np.sort(list(set(rangeHorizontal_discret)))
-        range_options_vertical = np.sort(list(set(rangeVertical_discret)))
-        #np.save("horizontal_ranges_opt2", range_options_horizontal)
-        #np.save("vertical_ranges_opt2", range_options_vertical)
-
-        # create some convient containers
-        featuresHorizontal = np.column_stack((rangeHorizontal, bearingHorizontal))
-        featuresVertical = np.column_stack((xVertical, rangeVertical))
-
-        #pixel containers
-        pixelsHorizontal = np.column_stack((uHorizontal, vHorizontal))
-        pixelsVertical = np.column_stack((uVertical, vVertical))
-
-        # container for matches format: [x,y,y,z,uncer]
-        matches = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-
-        # loop over the range options in horizontal sonar
-        for r1 in range_options_horizontal:
-
-            # check range options in vertical sonar
-            # for r2 in ver_range_options:
-            if (r1 in range_options_vertical) == True:
-                # get features at this range
-                hor = featuresHorizontal[rangeHorizontal_discret == r1]
-                vert = featuresVertical[rangeVertical_discret == r1]
-                #np.save("horizontal_features", hor)
-                #np.save("vertical_features", vert)
-
-                # get the patches at this range
-                hor_kernel = patchesHorizontal[rangeHorizontal_discret == r1]
-                vert_kernel = patchesVertical[rangeVertical_discret == r1]
-                #np.save("horizontal_patches", hor_kernel)
-                #np.save("vertical_patches", vert_kernel)
-
-                # get pixels at this range
-                hor_pix = pixelsHorizontal[rangeHorizontal_discret == r1]
-                vert_pix = pixelsVertical[rangeVertical_discret == r1]
-
-                # guard the sub problem against noise
-                if len(hor) > 2 and len(vert) > 2:
-
-                    # check which subset is larger
-                    if len(hor) > len(vert):
-
-                        # init min error as a high value
-                        error_min = sys.float_info.max
-                        error_min_set = None
-                        pix_set = None
-
-                        # log the costs
-                        cost_feature_mtx = np.zeros((len(vert), 1))
-
-                        # loop over the larger set
-                        for i in range(0, len(hor)):
-
-                            # scramble the horizontal
-                            x, y, pix = shuffle(hor, hor_kernel, hor_pix, random_state=i)
-
-                            # slice the scrambled horziontal to match dimensions
-                            x = x[: len(vert)]
-                            y = y[: len(vert)]
-                            pix = pix[: len(vert)]
-
-                            # get the difference between the kernel and the hyp
-                            val = np.array(abs(vert_kernel - y)).reshape(
-                                vert_kernel.shape[0], vert_kernel.shape[1] ** 2
-                            )
-
-                            # get the cost on a per feature basis
-                            cost_feature = np.sum(val, axis=1)
-
-                            # log this cost
-                            cost_feature_mtx = np.column_stack(
-                                (cost_feature_mtx, cost_feature)
-                            )
-
-                            # get the cost on a total basis
-                            error = np.sum(cost_feature)
-
-                            # if error is lower record it
-                            if error < error_min:
-
-                                # record the new error
-                                error_min = error
-
-                                # recrod the new set
-                                error_min_set = x
-                                pix_set = pix
-
-                                # record the patches
-                                error_min_patches = y
-
-                        # calculate feature uncertainty
-                        min_feature_costs = np.sort(cost_feature_mtx)
-                        # feature_uncertainty = (min_feature_costs[:,2] - min_feature_costs[:,1]) / np.sum(min_feature_costs, axis=1)
-                        feature_uncertainty = (
-                            min_feature_costs[:, 1] / min_feature_costs[:, 2]
-                        )
-
-                        # append to output
-                        matches = np.row_stack(
-                            (
-                                matches,
-                                np.column_stack(
-                                    (error_min_set, vert, feature_uncertainty, pix_set, vert_pix)
-                                ),
-                            )
-                        )
-
-
-                    else:
-
-                        # init min error as a high value
-                        error_min = sys.float_info.max
-                        error_min_set = None
-                        pix_set = None
-
-                        # log the errors
-                        errors = []
-
-                        # log the costs
-                        cost_feature_mtx = np.zeros((len(hor), 1))
-
-                        for i in range(0, len(vert)):
-
-                            # scramble the vertical
-                            x, y, pix = shuffle(vert, vert_kernel, vert_pix, random_state=i)
-
-                            # slice the scrambled vertical to match dimensions
-                            x = x[: len(hor)]
-                            y = y[: len(hor)]
-                            pix = pix[: len(hor)]
-
-                            # get the difference between the kernel and the hyp
-                            val = np.array(abs(hor_kernel - y)).reshape(
-                                hor_kernel.shape[0], hor_kernel.shape[1] ** 2
-                            )
-
-                            # get the cost on a per feature basis
-                            cost_feature = np.sum(val, axis=1)
-
-                            # log this cost
-                            cost_feature_mtx = np.column_stack(
-                                (cost_feature_mtx, cost_feature)
-                            )
-
-                            # get the cost on a total basis
-                            error = np.sum(cost_feature)
-
-                            # if error is record it
-                            if error < error_min:
-
-                                # record the new error
-                                error_min = error
-
-                                # recrod the new set
-                                error_min_set = x
-                                pix_set = pix
-
-                                # record the patches
-                                error_min_patches = y
-
-                        # calculate feature uncertainty
-                        min_feature_costs = np.sort(cost_feature_mtx)
-                        # feature_uncertainty = (min_feature_costs[:,2] - min_feature_costs[:,1]) / np.sum(min_feature_costs, axis=1)
-                        feature_uncertainty = (
-                            min_feature_costs[:, 1] / min_feature_costs[:, 2]
-                        )
-
-                        # append to output
-                        matches = np.row_stack(
-                            (
-                                matches,
-                                np.column_stack(
-                                    (hor, error_min_set, feature_uncertainty, hor_pix, pix_set)
-                                ),
-                            )
-                        )
-
-        return matches, matches.shape != (9,)
 
     def matchFeatures(
         self,
@@ -674,7 +404,6 @@ class StereoSonarRGB:
         for r1 in range_options_horizontal:
 
             # check range options in vertical sonar
-            # for r2 in ver_range_options:
             if (r1 in range_options_vertical) == True:
                 # get features at this range
                 hor = featuresHorizontal[rangeHorizontal_discret == r1]
@@ -697,7 +426,6 @@ class StereoSonarRGB:
                     vert_tile = np.tile(vert, (len(hor), 1))             # Shape: (m*n, 2)
                     vert_pix_tile = np.tile(vert_pix, (len(hor),1))
                     # Concatenate along columns
-                    #matches = np.hstack((hor_repeat, vert_tile, hor_pix_repeat, vert_pix_tile))       # Shape: (m*n, 4)
                     matches = np.row_stack(
                             (
                                 matches,
@@ -718,8 +446,6 @@ class StereoSonarRGB:
         points =np.column_stack((rangeHorizontal, bearingHorizontal, uh, vh, xh, yh))
         filtered_points = points[points[:, 0] < closest_match]
         
-        #print(closest_match)
-        #print(filtered_points)
         return filtered_points
     
     
@@ -762,8 +488,6 @@ class StereoSonarRGB:
                 horizontalFeatureImage *= 255
                 verticalFeatureImage *= 255
                 # Visualize FOV
-                #horizFeatureImage = horizontalFeatureImage.copy()
-                #print(horizontalFeatureImage.shape) # 379 x 687
                 horizFeatureImage = cv2.cvtColor(horizontalFeatureImage,cv2.COLOR_GRAY2RGB)
                 vertFeatureImage = cv2.cvtColor(verticalFeatureImage,cv2.COLOR_GRAY2RGB)     
                 cv2.line(horizFeatureImage,(int(horizontalFeatureImage.shape[1]/2 - horizontalFeatureImage.shape[0]*np.sin(np.deg2rad(15))),0),(int(horizontalFeatureImage.shape[1]/2),horizontalFeatureImage.shape[0]),[0,0,255],5)
@@ -825,9 +549,6 @@ class StereoSonarRGB:
 
             # protect for no matches
             if match_status:
-                # remove uncertain matches
-                #matches = matches[matches[:, 4] < self.uncertaintyMax]
-
                 # solve the conversion to cartsiain coords from spherical
                 bearingAngle = np.radians(matches[:, 1])  # convert back to radians
                 rangeAvg = (
@@ -841,36 +562,20 @@ class StereoSonarRGB:
                 )  # convert to cartisian
                 y = rangeAvg * np.sin(bearingAngle) * np.cos(elevationAngle)
                 z = -matches[:, 2]
-                #x = (
-                #    rangeAvg * np.cos(bearingAngle) * np.sin(elevationAngle)
-                #)  # convert to cartisian
-                #y = rangeAvg * np.sin(bearingAngle) * np.sin(elevationAngle)
 
                 # assemble the point cloud for ROS, the order may be different based on your
                 # coordinate frame
                 # With Kalman Filter
                 stereo_pointcloud = np.column_stack((x, -y, z)) ## Offset to robot center
-                # Without Kalman Filter
-                #points = np.column_stack((x+0.3, z, -y))
                 
                 # publish the CFAR image
                 if self.vis_features and matches[:,7].any():
                     for i in range(matches[:,4].shape[0]):
                         cv2.circle(horizFeatureImage,(matches[i,5].astype(int),matches[i,4].astype(int)), 3, (0,255,0), -1)
                         cv2.circle(vertFeatureImage,(matches[i,7].astype(int),matches[i,6].astype(int)), 3, (0, 255, 0), -1)      
-                '''
-                fig = plt.figure()
-                # Display the image inline using Matplotlib
-                plt.imshow(horizFeatureImage)
-                plt.axis('off')  # Hide axis
-                plt.show() 
-                '''
 
             # protect for no matches
             if close_points_h[:,4].any():
-                
-                # remove uncertain matches
-                #matches = matches[matches[:, 4] < self.uncertaintyMax]
 
                 # solve the conversion to cartsiain coords from spherical
                 bearingAngle = np.radians(close_points_h[:, 1])  # convert back to radians
@@ -883,18 +588,13 @@ class StereoSonarRGB:
                 z = np.zeros_like(close_points_h[:, 0])
                 # With Kalman Filter
                 close_pointcloud_h = np.column_stack((x, -y, z)) ## Offset to robot center
-                # Without Kalman Filter
-                #points = np.column_stack((x+0.3, z, -y))
                 
                 if self.vis_features and close_points_h[:,4].any():
                     for i in range(close_points_h[:,4].shape[0]):
                         cv2.circle(horizFeatureImage,(close_points_h[i,3].astype(int),close_points_h[i,2].astype(int)), 3, (255,0,0), -1)
-            #print("close points added to horizonatal image")
+            
             # protect for no matches
             if close_points_v[:,4].any():
-                
-                # remove uncertain matches
-                #matches = matches[matches[:, 4] < self.uncertaintyMax]
 
                 # solve the conversion to cartsiain coords from spherical
                 bearingAngle = np.radians(close_points_v[:, 1])  # convert back to radians
@@ -907,192 +607,9 @@ class StereoSonarRGB:
                 z = np.zeros_like(close_points_v[:, 0])
                 # With Kalman Filter
                 close_pointcloud_v = np.column_stack((x, -y, z)) ## Offset to robot center
-                # Without Kalman Filter
-                #points = np.column_stack((x+0.3, z, -y))
                 
                 if self.vis_features and close_points_v[:,4].any():
                     for i in range(close_points_v[:,4].shape[0]):
                         cv2.circle(vertFeatureImage,(close_points_v[i,3].astype(int),close_points_v[i,2].astype(int)), 3, (255,0,0), -1)
-                #print("close points added to vertical image")
-                '''
-                t, R = self.tf_to_map(odom)
-                new_cloud = self.aggregate_points(t, R, points)
-                pcd = o3d.geometry.PointCloud()
-                pcd.points = o3d.utility.Vector3dVector(new_cloud)
-                # Downsample the point cloud using a voxel grid filter
-                voxel_size = 0.01  # Adjust the voxel size to control the downsampling level
-                downsampled_pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
-                sampled_cloud = np.asarray(downsampled_pcd.points)
-                '''
-
             
             return stereo_pointcloud, horizFeatureImage, vertFeatureImage, close_pointcloud_h, close_points_h, close_pointcloud_v, close_points_v
-
-        
-    def run_stereo_original(self, imgHorizontal, imgVertical, stamp, ping):
-        #odom = self.odom
-        #ping = self.pingmsg
-        #imgHorizontal = self.currentHoriz
-        #imgVertical = self.currentVert
-        #stamp = self.currentStamp
-        #print(odom)
-
-        if imgHorizontal.size > 0 and imgVertical.size > 0 and stamp is not None: 
-            self.new = False
-            # generate the mapping from polar to cartisian
-            self.generate_map_xy(ping)
-
-            # denoise the horizontal image, consider adding this for the vertical image
-            if not self.fast_performance:
-                imgHorizontal = cv2.fastNlMeansDenoising(imgHorizontal, None, 10, 7, 21)
-                imgVertical = cv2.fastNlMeansDenoising(imgVertical, None, 10, 7, 21)
-
-            # check size, images must be the same size
-            if imgHorizontal.shape != imgVertical.shape:
-                imgVertical = cv2.resize(
-                    imgVertical, (imgHorizontal.shape[1], imgHorizontal.shape[0])
-                )
-
-            # get some features using CFAR
-            horizontalFeatures, horizontalFeatureImage = self.extractFeatures(
-                imgHorizontal, "horizontal", "SOCA", self.thresholdHorizontal
-            )
-            verticalFeatures, verticalFeatureImage = self.extractFeatures(
-                imgVertical, "vertical", "SOCA", self.thresholdVertical
-            )
-            
-            # publish the CFAR image
-            if self.vis_features:
-                horizontalFeatureImage *= 255
-                verticalFeatureImage *= 255
-                # Visualize FOV
-                #horizFeatureImage = horizontalFeatureImage.copy()
-                #print(horizontalFeatureImage.shape) # 379 x 687
-                horizFeatureImage = cv2.cvtColor(horizontalFeatureImage,cv2.COLOR_GRAY2RGB)
-                vertFeatureImage = cv2.cvtColor(verticalFeatureImage,cv2.COLOR_GRAY2RGB)     
-                cv2.line(horizFeatureImage,(int(horizontalFeatureImage.shape[1]/2 - horizontalFeatureImage.shape[0]*np.sin(np.deg2rad(15))),0),(int(horizontalFeatureImage.shape[1]/2),horizontalFeatureImage.shape[0]),[0,0,255],5)
-                cv2.line(horizFeatureImage,(int(horizontalFeatureImage.shape[1]/2 + horizontalFeatureImage.shape[0]*np.sin(np.deg2rad(15))),0),(int(horizontalFeatureImage.shape[1]/2),horizontalFeatureImage.shape[0]),[0,0,255],5)
-                cv2.line(vertFeatureImage,(int(horizontalFeatureImage.shape[1]/2 - horizontalFeatureImage.shape[0]*np.sin(np.deg2rad(15))),0), (int(horizontalFeatureImage.shape[1]/2),horizontalFeatureImage.shape[0]),[0,0,255],5)
-                cv2.line(vertFeatureImage,(int(horizontalFeatureImage.shape[1]/2 + horizontalFeatureImage.shape[0]*np.sin(np.deg2rad(15))),0), (int(horizontalFeatureImage.shape[1]/2),horizontalFeatureImage.shape[0]),[0,0,255],5)   
-
-
-            # remap the raw images into cartisian coords
-            imgHorizontal = cv2.remap(
-                imgHorizontal, self.map_x, self.map_y, cv2.INTER_LINEAR
-            )
-            imgVertical = cv2.remap(imgVertical, self.map_x, self.map_y, cv2.INTER_LINEAR)
-
-            # convert the features to meters and degrees
-            uh, vh, xh, yh, rh, bh = self.img2Real_overlaping(horizontalFeatures, "horizontal")
-            uv, vv, xv, yv, rv, bv = self.img2Real_overlaping(verticalFeatures, "vertical")
-
-
-            if self.method == "python":
-
-                # get the image kernels, used to compare pixel similarity
-                patches_horizontal = np.array(
-                    self.extractPatches(vh, uh, "horizontal", imgHorizontal, self.patchSize)
-                )
-                patches_vertical = np.array(
-                    self.extractPatches(vv, uv, "vertical", imgVertical, self.patchSize)
-                )
-
-                # perform some matching
-                matches, match_status = self. matchFeatures_original_stereo_sonar(
-                    rh, bh, xh, yh, patches_horizontal, rv, bv, xv, yv, patches_vertical, uh, vh, uv, vv
-                )
-
-                # remove the first row of zeros, only in the python implmentation
-                matches = np.delete(matches, 0, 0)
-            
-            elif self.method == "cpp":
-
-                # get the image kernels, used to compare pixel similarity
-                patches_horizontal = np.array(
-                    self.extractPatches(vh, uh, "horizontal", imgHorizontal, self.patchSize,True)
-                )
-                patches_vertical = np.array(
-                    self.extractPatches(vv, uv, "vertical", imgVertical, self.patchSize,True)
-                )
-
-                # perform some matching
-                matches, match_status = self.matchFeatures_2(
-                    rh, bh, patches_horizontal, rv, xv, patches_vertical
-                )
-
-        
-            # protect for no matches
-            if match_status:
-                # remove uncertain matches
-                matches = matches[matches[:, 4] < self.uncertaintyMax]
-
-                # solve the conversion to cartsiain coords from spherical
-                #elevationAngle = np.arccos(
-                #    matches[:, 2] / matches[:, 0]
-                #)  # get the elevation angle
-                bearingAngle = np.radians(matches[:, 1])  # convert back to radians
-                rangeAvg = (
-                    matches[:, 0] + matches[:, 3]
-                ) / 2.0  # average the range between the two matches
-                #x = (
-                #    rangeAvg * np.cos(bearingAngle) * np.sin(elevationAngle)
-                #)  # convert to cartisian
-                #y = rangeAvg * np.sin(bearingAngle) * np.sin(elevationAngle)
-                elevationAngle = np.arcsin(
-                    matches[:, 2] / rangeAvg
-                )  # get the elevation angle
-                x = (
-                    rangeAvg * np.cos(bearingAngle) * np.cos(elevationAngle)
-                )  # convert to cartisian
-                y = rangeAvg * np.sin(bearingAngle) * np.cos(elevationAngle)
-                z = matches[:, 2]
-
-                # assemble the point cloud for ROS, the order may be different based on your
-                # coordinate frame
-                # With Kalman Filter
-                points = np.column_stack((x, -y, z)) ## Offset to robot center
-                # Without Kalman Filter
-                #points = np.column_stack((x+0.3, z, -y))
-
-                
-                # publish the CFAR image
-                if self.vis_features and matches[:,5].any():
-                    for i in range(matches[:,5].shape[0]):
-                        cv2.circle(horizFeatureImage,(matches[i,6].astype(int),matches[i,5].astype(int)), 3, (0,255,0), -1)
-                        cv2.circle(vertFeatureImage,(matches[i,8].astype(int),matches[i,7].astype(int)), 3, (0, 255, 0), -1)      
-                '''
-                t, R = self.tf_to_map(odom)
-                new_cloud = self.aggregate_points(t, R, points)
-                pcd = o3d.geometry.PointCloud()
-                pcd.points = o3d.utility.Vector3dVector(new_cloud)
-                # Downsample the point cloud using a voxel grid filter
-                voxel_size = 0.01  # Adjust the voxel size to control the downsampling level
-                downsampled_pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
-                sampled_cloud = np.asarray(downsampled_pcd.points)
-                '''
-            # there are no matches, publish a blank cloud for downstream time sync
-            else:
-
-                # package as numpy array
-                points = np.column_stack(([], [], []))
-
-            return points, horizFeatureImage, vertFeatureImage
-        
-    def extract_line_scan(self,peaks: np.array) -> np.array:
-        """Get a linescan from a downward looking sonar
-
-        Args:
-            peaks (np.array): the cfar image in
-
-        Returns:
-            np.array: the line scan image
-        """
-
-        # extract the first contact in each column 
-        peaks_rot = np.rot90(peaks) # rotate the peaks to we can work with columns 
-        blank = np.zeros_like(peaks_rot) # make a blank image copy
-        for i,col in enumerate(peaks_rot): # loop
-            j = np.argmax(col)
-            if peaks_rot[i][j] != 0:
-                blank[i][j] = 255
-        return np.rot90(blank,3)
