@@ -23,8 +23,8 @@ Dependencies:
     cd catkin_ws/src
     git clone git@github.com:ivanacollg/stereosonar_camera_mapping.git
     cd ..
-    catkin build
-    source devel/setup.bash
+    colcon build --symlink-install
+    source install/setup.bash
 ```
 
 # Data

@@ -98,17 +98,22 @@ ament_target_dependencies(gpcoctomap_server
 # ======================
 install(
   TARGETS gpcoctomap_server
-  DESTINATION lib/${PROJECT_NAME}
+  DESTINATION lib/${PROJECT_NAME}/
 )
 
 install(
   DIRECTORY include/
-  DESTINATION include/
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+install(
+  DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/
 )
 
 install(
   DIRECTORY config/
-  DESTINATION share/${PROJECT_NAME}/config
+  DESTINATION share/${PROJECT_NAME}/
 )
 
 # ======================

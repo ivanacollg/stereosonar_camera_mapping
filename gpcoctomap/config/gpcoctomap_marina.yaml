@@ -1,31 +1,33 @@
-# GPC Octomap 
+/gpcoctomap_server:
+  ros__parameters:
+    # GPC Octomap 
 
-# Map topic, grid cell mininum resolution
-topic: /occupied_cells_vis_array
-resolution: 0.025
-block_depth: 1 # Test-data octree depth (see Wang & Englot ICRA 2016)
-max_range: 3 # Sensor max range (m)
-original_size: true
+    # Map topic, grid cell mininum resolution
+    topic: /occupied_cells_vis_array
+    resolution: 0.025
+    block_depth: 1 # Test-data octree depth (see Wang & Englot ICRA 2016)
+    max_range: 3.0 # Sensor max range (m)
+    original_size: true
 
-# Bounds on map height
-min_z: -0.5
-max_z: 2.25
+    # Bounds on map height
+    min_z: -0.5
+    max_z: 2.25
 
-# Kernel parameters
-sf2: 0.1
-ell: 0.025
+    # Kernel parameters
+    sf2: 0.1
+    ell: 0.025
 
-# Sampling resolutions
-free_resolution: 0.075
-ds_resolution: 0.025  # Downsampling factor
+    # Sampling resolutions
+    free_resolution: 0.075
+    ds_resolution: 0.025  # Downsampling factor
 
-# Free/Occupied Thresholds
-free_thresh: 0.3
-occupied_thresh: 0.7  
+    # Free/Occupied Thresholds
+    free_thresh: 0.3
+    occupied_thresh: 0.7  
 
-# GPC parameters
-noise: 0.01
-l: 100
-max_var: 1000
-min_var: 0.001
-max_known_var: 00.02
+    # GPC parameters
+    noise: 0.01
+    l: 100.0
+    max_var: 1000.0
+    min_var: 0.001
+    max_known_var: 00.02

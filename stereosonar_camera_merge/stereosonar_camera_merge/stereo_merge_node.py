@@ -243,6 +243,7 @@ class MergeNode(Node):
             self.header.frame_id = "base_link"
             
             # create_cloud in ROS 2 (sensor_msgs_py)
+            point_cloud = point_cloud.astype(np.float32)
             cloud_msg = pc2.create_cloud(self.header, self.laserFields, point_cloud)
             self.merge_cloud_pub.publish(cloud_msg)
 

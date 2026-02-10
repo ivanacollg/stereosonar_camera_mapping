@@ -56,14 +56,10 @@ def generate_launch_description():
                 merge_param_file,
                 {
                     'publish_rate': 5,
-                    # --- FIXED NAMES BELOW ---
                     'horizontal_sonar_sub': '/sonar_oculus_node/M750d/ping',
                     'vertical_sonar_sub': '/sonar_oculus_node/M1200d/ping',
                     'odom_sub': '/odom',
                     'image_sub': '/camera/image_raw/compressed',
-                    
-                    # Check these output names in your Python __init__ too!
-                    # Based on your previous code, Python expects:
                     'segmented_image_pub': '/sonar_camera_merge/segmented_img/compressed',
                     'merge_cloud_pub': '/sonar_camera_merge/cloud',
                     'horizontal_feature_image_pub': '/sonar_camera_merge/horizontal_feature_img/compressed',
@@ -90,14 +86,6 @@ def generate_launch_description():
             arguments=['-d', rviz_file],
             output='screen',
         )
-
-        #mapping_node = Node(
-        #    package='stereosonar_camera_merge',
-        #    executable='',
-        #    name='',
-        #    arguments='',
-        #    output='',
-        #)
 
         return [merge_node, tf_node, rviz_node]
 

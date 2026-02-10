@@ -24,12 +24,13 @@
 #include "gpcoctomap.h"
 
 using std::placeholders::_1;
+using namespace std::chrono_literals; // Useful for time durations
 
 class GpcoctomapHandler : public rclcpp::Node {
 public:
     GpcoctomapHandler(const std::string& cloud_topic)
         : Node("gpcoctomap_server"),
-          frame_id_("map"), // Removed leading slash for ROS 2 frame conventions
+          frame_id_("map"), 
           first_(true), 
           updated_(false),
           position_change_thresh_(0.1), 
@@ -76,25 +77,36 @@ public:
         max_var_ = this->get_parameter("max_var").as_double();
         max_known_var_ = this->get_parameter("max_known_var").as_double();
 
-        // --- Initialization ---
+        // --- Initialization of Core Components ---
         
-        // TF Buffer & Listener
+        // TF Buffer & Listener (Safe to do in constructor)
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-        // GPC Octomap
+        // GPC Octomap (Safe to do in constructor)
         map_ = std::make_unique<gpcoctomap::GPCOctoMap>(resolution_, block_depth_, sf2_, ell_,
                                      noise_, l_, min_var_, max_var_, max_known_var_,
                                      free_thresh_, occupied_thresh_);
 
-        // Marker Publishers (Pass shared_ptr<Node> to them)
-        // We assume MarkerArrayPub accepts rclcpp::Node::SharedPtr as per previous migration
-        m_pub_occ_ = std::make_unique<gpcoctomap::MarkerArrayPub>(this->shared_from_this(), map_topic_occ_, resolution_);
-        m_pub_free_ = std::make_unique<gpcoctomap::MarkerArrayPub>(this->shared_from_this(), map_topic_free_, resolution_);
-
         // Subscriber
         point_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
             cloud_topic, 100, std::bind(&GpcoctomapHandler::cloudHandler, this, _1));
+            
+        RCLCPP_INFO(this->get_logger(), "Node constructed, waiting for initialization...");
+    }
+
+    /**
+     * @brief Call this method immediately after creating the shared_ptr of this node.
+     * This handles components that require 'shared_from_this()'.
+     */
+    void initialize() {
+        RCLCPP_INFO(this->get_logger(), "Initializing publishers...");
+        
+        // Marker Publishers (Now safe to call shared_from_this())
+        m_pub_occ_ = std::make_unique<gpcoctomap::MarkerArrayPub>(this->shared_from_this(), map_topic_occ_, resolution_);
+        m_pub_free_ = std::make_unique<gpcoctomap::MarkerArrayPub>(this->shared_from_this(), map_topic_free_, resolution_);
+        
+        RCLCPP_INFO(this->get_logger(), "Initialization complete.");
     }
 
     ~GpcoctomapHandler() {
@@ -106,38 +118,46 @@ public:
                 RCLCPP_INFO_STREAM(this->get_logger(), "Saved occupancy map with " << occupied_cloud_->size()
                                 << " points to /home/ivana-rfal/gpcoctomap.pcd");
             }
-        } else {
-            RCLCPP_WARN(this->get_logger(), "Occupied cloud is empty, not saving PCD file.");
         }
 
-        // Statistics (Optional: Uncomment to log)
+        // Statistics
         if (!times_.empty()) {
              double sum = std::accumulate(times_.begin(), times_.end(), 0.0);
              double avg = sum / times_.size();
-             // RCLCPP_INFO_STREAM(this->get_logger(), "Final Timing Stats: Average = " << avg << "s");
+             RCLCPP_INFO_STREAM(this->get_logger(), "Final Timing Stats: Average = " << avg << "s");
         }
     }
 
 private:
     void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
+        // Ensure publishers are initialized before processing
+        if (!m_pub_occ_ || !m_pub_free_) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
+                "Publishers not initialized yet. Call node->initialize() in main.");
+            return;
+        }
+
         geometry_msgs::msg::TransformStamped transform_stamped;
         
         try {
-            // ROS 2 lookupTransform typically uses a timeout
+            // FIX: Use tf2::durationFromSec(1.0) instead of 1.0s
             transform_stamped = tf_buffer_->lookupTransform(
                 frame_id_, 
                 cloud->header.frame_id, 
-                tf2::TimePointZero, // Get latest available
-                tf2::durationFromSec(1.0)); // Wait up to 1s
+                tf2::TimePointZero, 
+                tf2::durationFromSec(1.0)); 
         } catch (tf2::TransformException &ex) {
-            RCLCPP_ERROR(this->get_logger(), "%s", ex.what());
+            // Lowered to WARN so it doesn't spam errors on startup
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Transform error: %s", ex.what());
             return;
         }
 
         rclcpp::Time start = this->get_clock()->now();
         gpcoctomap::point3f origin;
 
-        // Extract translation and rotation for delta calculation
+        // ... rest of the function remains the same ... 
+        
+        // Extract translation and rotation
         tf2::Vector3 translation(
             transform_stamped.transform.translation.x,
             transform_stamped.transform.translation.y,
@@ -162,7 +182,7 @@ private:
             origin.y() = (float) translation.y();
             origin.z() = (float) translation.z();
 
-            // Transform Cloud using tf2_sensor_msgs
+            // Transform Cloud
             sensor_msgs::msg::PointCloud2 cloud_map_msg;
             tf2::doTransform(*cloud, cloud_map_msg, transform_stamped);
 
@@ -203,17 +223,6 @@ private:
             rclcpp::Time end2 = this->get_clock()->now();
             double duration = (end2 - start).seconds();
             times_.push_back(duration);
-
-            // Stats logging logic remains mostly same
-            /*
-            double sum = std::accumulate(times_.begin(), times_.end(), 0.0);
-            double avg = sum / times_.size();
-            double sq_sum = std::inner_product(times_.begin(), times_.end(), times_.begin(), 0.0);
-            double stdev = std::sqrt(sq_sum / times_.size() - avg * avg);
-            RCLCPP_INFO_STREAM(this->get_logger(), "Timing Stats: Average = " << avg 
-                            << "s, StdDev = " << stdev 
-                            << "s over " << times_.size() << " runs.");
-            */
         }
     }
 
@@ -225,7 +234,6 @@ private:
     std::string frame_id_;
     std::unique_ptr<gpcoctomap::GPCOctoMap> map_;
     
-    // Using unique_ptr for local class members is cleaner than raw pointers
     std::unique_ptr<gpcoctomap::MarkerArrayPub> m_pub_occ_;
     std::unique_ptr<gpcoctomap::MarkerArrayPub> m_pub_free_;
 
@@ -251,10 +259,15 @@ private:
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     
-    // Default topic if not remapped, matching original code logic
     std::string cloud_topic = "/sonar_camera_merge/cloud";
     
+    // 1. Create the shared pointer
     auto node = std::make_shared<GpcoctomapHandler>(cloud_topic);
+    
+    // 2. IMPORTANT: Call initialize() explicitly after creation
+    // This allows shared_from_this() to work inside this method
+    node->initialize();
+
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
