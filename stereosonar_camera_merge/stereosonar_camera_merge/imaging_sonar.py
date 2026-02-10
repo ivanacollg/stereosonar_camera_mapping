@@ -8,7 +8,7 @@ import cv2
 import open3d as o3d
 
 # Custom libaries
-from CFAR import *
+from stereosonar_camera_merge.CFAR import *
 
 cv2.setNumThreads(4)  # Adjust the number based on your CPU cores
 cv2.setUseOptimized(True)

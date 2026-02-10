@@ -2,19 +2,20 @@
 
 This repo contains the code derived from the paper **"Towards Versatile Opti-Acoustic Sensor Fusion and Volumetric Mapping for Safe Underwater Navigation" (2026)**, presents a volumetric mapping framework that fuses a stereo sonar pair with a monocular camera to enable safe underwater navigation under varying visibility conditions. 
   
-You are viewing the ROS 1 version of this code, ROS2 version comming soon.
+You are viewing the ROS2 , ROS1 version can be viwed [Here]
 
 # Dependencies
 This codebase is ROS native and will require a ROS installation. It can be used without ROS, but will require some work.
 
-- ROS Noetic
+- ROS Jazzy
 - Python3
 
 Dependencies:
 
-    sudo pip install catkin_tools scipy open3d ultralytics
+    sudo pip install empy catkin_pkg "numpy<2.0" lark scipy opencv-python PyYAML ultralytics open3d
 
-    sudo apt-get install ros-noetic-octomap* ros-noetic-pybind11-catkin
+    sudo apt install ros-jazzy-pcl-ros ros-jazzy-image-transport-plugins
+
 
 # Set Up
 ```

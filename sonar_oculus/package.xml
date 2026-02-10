@@ -1,26 +1,28 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>sonar_oculus</name>
   <version>0.0.0</version>
-  <description>The sonar_oculus package</description>
+  <description>sonar_oculus package</description>
+  <maintainer email="icollado@stevens.edu">Ivana Collado</maintainer>
+  <license>MIT</license>
 
-  <maintainer email="icollado@stevens.edu">Collado</maintainer>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <build_depend>rosidl_default_generators</build_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
 
-  <!-- One license tag required, multiple allowed, one license per tag -->
-  <!-- Commonly used license strings: -->
-  <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
-  <license>TODO</license>
-
-  <!-- Build system -->
-  <buildtool_depend>catkin</buildtool_depend>
-
-  <!-- Message generation -->
   <build_depend>sensor_msgs</build_depend>
-  <build_depend>message_generation</build_depend>
-  <exec_depend>message_runtime</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>sensors_msgs</exec_depend>
 
-  <!-- Messages used inside .msg files -->
-  <depend>std_msgs</depend>
+  <build_depend>std_msgs</build_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
 </package>

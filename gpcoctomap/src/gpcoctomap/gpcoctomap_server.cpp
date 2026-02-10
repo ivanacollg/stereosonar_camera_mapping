@@ -1,104 +1,159 @@
+#include <memory>
 #include <string>
 #include <iostream>
 #include <numeric>
 #include <cmath>
-#include <ros/ros.h>
-#include <pcl_ros/transforms.h>
-#include <pcl/filters/voxel_grid.h>
-#include "markerarray_pub.h"
-#include "gpcoctomap.h"
+#include <vector>
+#include <algorithm>
 
-#include <cstdlib>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Vector3.h>
+
+#include <pcl_conversions/pcl_conversions.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 
-class GpcoctomapHandler {
+// Assumed header names based on previous context
+#include "markerarray_pub.h" 
+#include "gpcoctomap.h"
+
+using std::placeholders::_1;
+
+class GpcoctomapHandler : public rclcpp::Node {
 public:
-    GpcoctomapHandler(ros::NodeHandle& nh, const std::string& cloud_topic)
-        : nh_(nh), listener_(new tf::TransformListener()), 
-          frame_id_("/map"), first_(true), updated_(false),
-          position_change_thresh_(0.1), orientation_change_thresh_(0.2) 
+    GpcoctomapHandler(const std::string& cloud_topic)
+        : Node("gpcoctomap_server"),
+          frame_id_("map"), // Removed leading slash for ROS 2 frame conventions
+          first_(true), 
+          updated_(false),
+          position_change_thresh_(0.1), 
+          orientation_change_thresh_(0.2) 
     {
-        // Params
-        nh_.param<std::string>("topic", map_topic_occ_, std::string("/occupied_cells_vis_array"));
-        nh_.param<std::string>("topic_free", map_topic_free_, std::string("/free_cells_vis_array"));
-        nh_.param<double>("max_range", max_range_, -1.0);
-        nh_.param<double>("resolution", resolution_, 0.1);
-        nh_.param<int>("block_depth", block_depth_, 4);
-        nh_.param<double>("sf2", sf2_, 1.0);
-        nh_.param<double>("ell", ell_, 1.0);
-        nh_.param<double>("free_resolution", free_resolution_, 0.1);
-        nh_.param<double>("ds_resolution", ds_resolution_, 0.1);
-        nh_.param<double>("free_thresh", free_thresh_, 0.3);
-        nh_.param<double>("occupied_thresh", occupied_thresh_, 0.7);
-        nh_.param<double>("min_z", min_z_, 0.0);
-        nh_.param<double>("max_z", max_z_, 0.0);
-        nh_.param<bool>("original_size", original_size_, true);
+        // --- Parameter Declaration & Retrieval ---
+        this->declare_parameter("topic", "/occupied_cells_vis_array");
+        this->declare_parameter("topic_free", "/free_cells_vis_array");
+        this->declare_parameter("max_range", -1.0);
+        this->declare_parameter("resolution", 0.1);
+        this->declare_parameter("block_depth", 4);
+        this->declare_parameter("sf2", 1.0);
+        this->declare_parameter("ell", 1.0);
+        this->declare_parameter("free_resolution", 0.1);
+        this->declare_parameter("ds_resolution", 0.1);
+        this->declare_parameter("free_thresh", 0.3);
+        this->declare_parameter("occupied_thresh", 0.7);
+        this->declare_parameter("min_z", 0.0);
+        this->declare_parameter("max_z", 0.0);
+        this->declare_parameter("original_size", true);
+        this->declare_parameter("noise", 0.01);
+        this->declare_parameter("l", 100.0);
+        this->declare_parameter("min_var", 0.001);
+        this->declare_parameter("max_var", 1000.0);
+        this->declare_parameter("max_known_var", 0.02);
 
-        nh_.param<double>("noise", noise_, 0.01);
-        nh_.param<double>("l", l_, 100.0);
-        nh_.param<double>("min_var", min_var_, 0.001);
-        nh_.param<double>("max_var", max_var_, 1000.0);
-        nh_.param<double>("max_known_var", max_known_var_, 0.02);
+        map_topic_occ_ = this->get_parameter("topic").as_string();
+        map_topic_free_ = this->get_parameter("topic_free").as_string();
+        max_range_ = this->get_parameter("max_range").as_double();
+        resolution_ = this->get_parameter("resolution").as_double();
+        block_depth_ = this->get_parameter("block_depth").as_int();
+        sf2_ = this->get_parameter("sf2").as_double();
+        ell_ = this->get_parameter("ell").as_double();
+        free_resolution_ = this->get_parameter("free_resolution").as_double();
+        ds_resolution_ = this->get_parameter("ds_resolution").as_double();
+        free_thresh_ = this->get_parameter("free_thresh").as_double();
+        occupied_thresh_ = this->get_parameter("occupied_thresh").as_double();
+        min_z_ = this->get_parameter("min_z").as_double();
+        max_z_ = this->get_parameter("max_z").as_double();
+        original_size_ = this->get_parameter("original_size").as_bool();
+        noise_ = this->get_parameter("noise").as_double();
+        l_ = this->get_parameter("l").as_double();
+        min_var_ = this->get_parameter("min_var").as_double();
+        max_var_ = this->get_parameter("max_var").as_double();
+        max_known_var_ = this->get_parameter("max_known_var").as_double();
 
-        map_ = new gpcoctomap::GPCOctoMap(resolution_, block_depth_, sf2_, ell_,
+        // --- Initialization ---
+        
+        // TF Buffer & Listener
+        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+        // GPC Octomap
+        map_ = std::make_unique<gpcoctomap::GPCOctoMap>(resolution_, block_depth_, sf2_, ell_,
                                      noise_, l_, min_var_, max_var_, max_known_var_,
                                      free_thresh_, occupied_thresh_);
 
-        m_pub_occ_ = new gpcoctomap::MarkerArrayPub(nh_, map_topic_occ_, resolution_);
-        m_pub_free_ = new gpcoctomap::MarkerArrayPub(nh_, map_topic_free_, resolution_);
+        // Marker Publishers (Pass shared_ptr<Node> to them)
+        // We assume MarkerArrayPub accepts rclcpp::Node::SharedPtr as per previous migration
+        m_pub_occ_ = std::make_unique<gpcoctomap::MarkerArrayPub>(this->shared_from_this(), map_topic_occ_, resolution_);
+        m_pub_free_ = std::make_unique<gpcoctomap::MarkerArrayPub>(this->shared_from_this(), map_topic_free_, resolution_);
 
-        point_sub_ = nh_.subscribe<sensor_msgs::PointCloud2>(cloud_topic, 100,
-                        &GpcoctomapHandler::cloudHandler, this);
+        // Subscriber
+        point_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+            cloud_topic, 100, std::bind(&GpcoctomapHandler::cloudHandler, this, _1));
     }
 
     ~GpcoctomapHandler() {
         // Save Occupied Cloud
         if (occupied_cloud_ && !occupied_cloud_->empty()) {
             if (pcl::io::savePCDFileBinary("/home/ivana-rfal/gpcoctomap.pcd", *occupied_cloud_) == -1) {
-                ROS_ERROR("Failed to save PCD file!");
+                RCLCPP_ERROR(this->get_logger(), "Failed to save PCD file!");
             } else {
-                ROS_INFO_STREAM("Saved occupancy map with " << occupied_cloud_->size()
+                RCLCPP_INFO_STREAM(this->get_logger(), "Saved occupancy map with " << occupied_cloud_->size()
                                 << " points to /home/ivana-rfal/gpcoctomap.pcd");
             }
         } else {
-            ROS_WARN("Occupied cloud is empty, not saving PCD file.");
+            RCLCPP_WARN(this->get_logger(), "Occupied cloud is empty, not saving PCD file.");
         }
 
-        // Compute and log timing stats
+        // Statistics (Optional: Uncomment to log)
         if (!times_.empty()) {
-            double sum = std::accumulate(times_.begin(), times_.end(), 0.0);
-            double avg = sum / times_.size();
-            double sq_sum = std::inner_product(times_.begin(), times_.end(), times_.begin(), 0.0);
-            double stdev = std::sqrt(sq_sum / times_.size() - avg * avg);
-
-            //ROS_INFO_STREAM("Final Timing Stats: Average = " << avg 
-            //                << "s, StdDev = " << stdev 
-            //                << "s over " << times_.size() << " runs.");
+             double sum = std::accumulate(times_.begin(), times_.end(), 0.0);
+             double avg = sum / times_.size();
+             // RCLCPP_INFO_STREAM(this->get_logger(), "Final Timing Stats: Average = " << avg << "s");
         }
     }
 
 private:
-    void cloudHandler(const sensor_msgs::PointCloud2ConstPtr &cloud) {
-        tf::StampedTransform transform;
+    void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
+        geometry_msgs::msg::TransformStamped transform_stamped;
+        
         try {
-            listener_->waitForTransform(frame_id_, cloud->header.frame_id, cloud->header.stamp, ros::Duration(5.0));
-            listener_->lookupTransform(frame_id_, cloud->header.frame_id, cloud->header.stamp, transform);
-        } catch (tf::TransformException ex) {
-            ROS_ERROR("%s", ex.what());
+            // ROS 2 lookupTransform typically uses a timeout
+            transform_stamped = tf_buffer_->lookupTransform(
+                frame_id_, 
+                cloud->header.frame_id, 
+                tf2::TimePointZero, // Get latest available
+                tf2::durationFromSec(1.0)); // Wait up to 1s
+        } catch (tf2::TransformException &ex) {
+            RCLCPP_ERROR(this->get_logger(), "%s", ex.what());
             return;
         }
 
-        ros::Time start = ros::Time::now();
+        rclcpp::Time start = this->get_clock()->now();
         gpcoctomap::point3f origin;
-        tf::Vector3 translation = transform.getOrigin();
-        tf::Quaternion orientation = transform.getRotation();
+
+        // Extract translation and rotation for delta calculation
+        tf2::Vector3 translation(
+            transform_stamped.transform.translation.x,
+            transform_stamped.transform.translation.y,
+            transform_stamped.transform.translation.z
+        );
+        
+        tf2::Quaternion orientation(
+            transform_stamped.transform.rotation.x,
+            transform_stamped.transform.rotation.y,
+            transform_stamped.transform.rotation.z,
+            transform_stamped.transform.rotation.w
+        );
 
         if (first_ || orientation.angleShortestPath(last_orientation_) > orientation_change_thresh_ ||
             translation.distance(last_position_) > position_change_thresh_) 
         {
-            //ROS_INFO_STREAM("Cloud received");
-
             last_position_ = translation;
             last_orientation_ = orientation;
             first_ = false;
@@ -107,11 +162,13 @@ private:
             origin.y() = (float) translation.y();
             origin.z() = (float) translation.z();
 
-            sensor_msgs::PointCloud2 cloud_map;
-            pcl_ros::transformPointCloud(frame_id_, *cloud, cloud_map, *listener_);
+            // Transform Cloud using tf2_sensor_msgs
+            sensor_msgs::msg::PointCloud2 cloud_map_msg;
+            tf2::doTransform(*cloud, cloud_map_msg, transform_stamped);
 
+            // Convert to PCL
             gpcoctomap::PCLCPointCloud::Ptr pcl_cloud(new gpcoctomap::PCLCPointCloud());
-            pcl::fromROSMsg(cloud_map, *pcl_cloud);
+            pcl::fromROSMsg(cloud_map_msg, *pcl_cloud);
 
             if (pcl_cloud->size() > 5) {
                 map_->insert_pointcloud(*pcl_cloud, origin, (float) resolution_, 
@@ -121,8 +178,6 @@ private:
         }
 
         if (updated_) {
-            ros::Time start2 = ros::Time::now();
-
             m_pub_occ_->clear();
             m_pub_free_->clear();
             occupied_cloud_.reset(new pcl::PointCloud<pcl::PointXYZ>);
@@ -145,35 +200,39 @@ private:
             m_pub_free_->publish();
             updated_ = false;
 
-            ros::Time end2 = ros::Time::now();
-            double duration = (end2 - start).toSec();
+            rclcpp::Time end2 = this->get_clock()->now();
+            double duration = (end2 - start).seconds();
             times_.push_back(duration);
 
-            // Compute and log timing stats
+            // Stats logging logic remains mostly same
+            /*
             double sum = std::accumulate(times_.begin(), times_.end(), 0.0);
             double avg = sum / times_.size();
             double sq_sum = std::inner_product(times_.begin(), times_.end(), times_.begin(), 0.0);
             double stdev = std::sqrt(sq_sum / times_.size() - avg * avg);
-
-            //ROS_INFO_STREAM("Timing Stats: Average = " << avg 
-            //                << "s, StdDev = " << stdev 
-            //                << "s over " << times_.size() << " runs.");
-        
+            RCLCPP_INFO_STREAM(this->get_logger(), "Timing Stats: Average = " << avg 
+                            << "s, StdDev = " << stdev 
+                            << "s over " << times_.size() << " runs.");
+            */
         }
     }
 
     // --- Members ---
-    ros::NodeHandle nh_;
-    ros::Subscriber point_sub_;
-    tf::TransformListener* listener_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_sub_;
+    
     std::string frame_id_;
-    gpcoctomap::GPCOctoMap* map_;
-    gpcoctomap::MarkerArrayPub *m_pub_occ_, *m_pub_free_;
+    std::unique_ptr<gpcoctomap::GPCOctoMap> map_;
+    
+    // Using unique_ptr for local class members is cleaner than raw pointers
+    std::unique_ptr<gpcoctomap::MarkerArrayPub> m_pub_occ_;
+    std::unique_ptr<gpcoctomap::MarkerArrayPub> m_pub_free_;
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr occupied_cloud_;
 
-    tf::Vector3 last_position_;
-    tf::Quaternion last_orientation_;
+    tf2::Vector3 last_position_;
+    tf2::Quaternion last_orientation_;
     bool first_, updated_;
     double position_change_thresh_, orientation_change_thresh_;
 
@@ -190,12 +249,13 @@ private:
 };
 
 int main(int argc, char **argv) {
-    ros::init(argc, argv, "gpcoctomap_server");
-    ros::NodeHandle nh("~");
-
-    std::string cloud_topic("/sonar_camera_merge/cloud");
-    GpcoctomapHandler handler(nh, cloud_topic);
-
-    ros::spin();
+    rclcpp::init(argc, argv);
+    
+    // Default topic if not remapped, matching original code logic
+    std::string cloud_topic = "/sonar_camera_merge/cloud";
+    
+    auto node = std::make_shared<GpcoctomapHandler>(cloud_topic);
+    rclcpp::spin(node);
+    rclcpp::shutdown();
     return 0;
 }

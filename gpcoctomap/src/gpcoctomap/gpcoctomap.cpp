@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <boost/functional/hash.hpp>
 #include <pcl/filters/voxel_grid.h>
 #include "gpcoctomap.h"
 #include "gpcregressor.h"
@@ -440,7 +441,7 @@ namespace gpcoctomap {
 
         // 1. Accumulate stats for each voxel
         for (const auto& pt : in) {
-            if (!pcl::isFinite(pt)) continue;
+            if (!std::isfinite(pt.x) || !std::isfinite(pt.y) || !std::isfinite(pt.z)) continue;
 
             int ix = static_cast<int>(std::floor(pt.x / ds_resolution));
             int iy = static_cast<int>(std::floor(pt.y / ds_resolution));

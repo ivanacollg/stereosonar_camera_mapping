@@ -1,10 +1,13 @@
-# Fast performance mode
-# Code will run faster, it will be slightly less percise
-fast_performance: True
+/stereo_merge_node:
+  ros__parameters:
 
-yolo_segmentation: True
+    # Fast performance mode
+    # Code will run faster, it will be slightly less percise
+    fast_performance: True
 
-# Merge confidence values 
-conf_ss: 20.0 # stereo sonar pointcloud 
-conf_s:  1.0 # sonar-to-image pointcloud 
-conf_e:  0.5 # sonar expansion pointcloud
+    yolo_segmentation: True
+
+    # Merge confidence values 
+    conf_ss: 20.0 # stereo sonar pointcloud 
+    conf_s:  1.0 # sonar-to-image pointcloud 
+    conf_e:  0.5 # sonar expansion pointcloud

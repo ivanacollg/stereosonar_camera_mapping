@@ -1,18 +1,18 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>gpcoctomap</name>
   <version>0.0.0</version>
-  <description>The gpcoctomap package</description>
+  <description>TODO: Package description</description>
+  <maintainer email="ivanacollado@gmail.com">rfal</maintainer>
+  <license>Apache-2.0</license>
 
-  <maintainer email="icollado@stevens.edu">Collado</maintainer>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <license>MIT</license>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
 
-  <buildtool_depend>catkin</buildtool_depend>
-
-  <!-- The export tag contains other, unspecified, tags -->
   <export>
-    <!-- Other tools can request additional information be placed here -->
-
+    <build_type>ament_cmake</build_type>
   </export>
 </package>

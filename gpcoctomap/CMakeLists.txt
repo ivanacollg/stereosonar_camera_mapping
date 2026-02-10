@@ -1,35 +1,37 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.8)
 project(gpcoctomap)
 
-## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+# Compiler options
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
-find_package(catkin REQUIRED COMPONENTS
-    pcl_ros
-    roscpp
-)
+# Default to C++17
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES gpcoctomap
-  #CATKIN_DEPENDS pcl_ros octomap_ros geometry_msgs visualization_msgs roscpp
-#  DEPENDS system_lib
-)
+# ======================
+# Dependencies
+# ======================
+find_package(ament_cmake REQUIRED)
+# ROS2 Pkgs
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)        
+find_package(sensor_msgs REQUIRED)     
+find_package(geometry_msgs REQUIRED)  
+find_package(pcl_conversions REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_sensor_msgs REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+# System Pkgs
+find_package(PCL REQUIRED)
 
 
-###########
-## Build ##
-###########
-
-## Specify additional locations of header files
-## Your package locations should be listed before other locations
-include_directories(
-        include/gpcoctomap
-        include/common
-        ${catkin_INCLUDE_DIRS}
-)
-
-# Files for GPC source
+# ======================
+# Source files
+# ======================
 set(GPC_SOURCE_FILES
   src/gpcoctomap/gpcblock.cpp
   src/gpcoctomap/gpcoctomap.cpp
@@ -37,19 +39,87 @@ set(GPC_SOURCE_FILES
   src/gpcoctomap/gpcoctree.cpp
 )
 
+# ======================
+# Executable
+# ======================
 add_executable(gpcoctomap_server
-    ${GPC_SOURCE_FILES}
-    ${COMMON_SOURCE_FILES}
-    src/gpcoctomap/gpcoctomap_server.cpp
+  ${GPC_SOURCE_FILES}
+  src/gpcoctomap/gpcoctomap_server.cpp
 )
 
-
-## Add cmake target dependencies of the executable
-## same as for the library above
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-## Specify libraries to link a library or executable target against
-target_link_libraries(gpcoctomap_server
-        ${catkin_LIBRARIES}
+# ======================
+# Include directories
+# ======================
+#include_directories(
+#  include
+#  include/gpcoctomap
+#  include/common
+#)
+target_include_directories(gpcoctomap_server PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${PCL_INCLUDE_DIRS}  # CRITICAL: This fixes "pcl/point_cloud.h not found"
 )
+
+# ======================
+# Link dependencies
+# ======================
+target_include_directories(gpcoctomap_server PUBLIC
+  # Look in the standard include folder
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  
+  # Look in the source folder (where your .h files currently are)
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/gpcoctomap>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/common>
+
+  # Look in the install folder (for when the package is installed)
+  $<INSTALL_INTERFACE:include>
+  
+  # Look for PCL headers
+  ${PCL_INCLUDE_DIRS}
+)
+
+# ROS2 LIbraries
+ament_target_dependencies(gpcoctomap_server
+  rclcpp
+  std_msgs
+  sensor_msgs
+  geometry_msgs
+  visualization_msgs
+  tf2
+  tf2_ros
+  tf2_sensor_msgs
+  tf2_geometry_msgs
+  pcl_conversions 
+)
+
+# ======================
+# Install
+# ======================
+install(
+  TARGETS gpcoctomap_server
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY include/
+  DESTINATION include/
+)
+
+install(
+  DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
+)
+
+# ======================
+# Testing
+# ======================
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  set(ament_cmake_cpplint_FOUND TRUE)
+  set(ament_cmake_copyright_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
+ament_package()
 

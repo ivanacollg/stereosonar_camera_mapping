@@ -1,7 +1,6 @@
-from CFAR import * 
+from stereosonar_camera_merge.CFAR import * 
 from scipy.interpolate import interp1d
-from tf.transformations import euler_from_quaternion, euler_matrix
-import rospy
+
 import sys
 import cv2
 from sklearn.utils import shuffle
@@ -167,7 +166,7 @@ class StereoSonarRGB:
         elif sonar == "horizontal":
             pass
         else:
-            rospy.loginfo("Incorrect sonar info in img2real function!")
+            print("Incorrect sonar info in img2real function!")
 
         # get range and bearing
         r = np.sqrt(x ** 2 + y ** 2)
@@ -209,7 +208,7 @@ class StereoSonarRGB:
         elif sonar == "horizontal":
             pass
         else:
-            rospy.loginfo("Incorrect sonar info in img2real function!")
+            print("Incorrect sonar info in img2real function!")
 
         # get range and bearing
         r = np.sqrt(x ** 2 + y ** 2)
@@ -244,7 +243,7 @@ class StereoSonarRGB:
         elif detector == "horizontal":
             detector = self.detector_horizontal
         else:
-            rospy.loginfo("Incorrect sonar info in extractFeatures function!")
+            print("Incorrect sonar info in extractFeatures function!")
 
         # get raw detections
         peaks = detector.detect(img, alg)
@@ -304,7 +303,7 @@ class StereoSonarRGB:
                         patch = np.ravel(patch)
                     patches.append(patch)
             else:
-                rospy.loginfo("Incorrect sonar info in extractPatches function!")
+                print("Incorrect sonar info in extractPatches function!")
 
         return patches
 
