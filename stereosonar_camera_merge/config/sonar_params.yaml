@@ -8,7 +8,7 @@
 
     # Constant false alarm rate (CFAR) params for feature extraction
     horizontal:
-      threshold: 65
+      threshold: 65.0
       CFAR:
         Ntc: 40 # number of training cells
         Ngc: 10 # number of guard cells
@@ -17,7 +17,7 @@
 
     # Constant false alarm rate (CFAR) params for feature extraction
     vertical:
-      threshold: 65
+      threshold: 65.0
       CFAR:
         Ntc: 40 # number of training cells
         Ngc: 10 # number of guard cells

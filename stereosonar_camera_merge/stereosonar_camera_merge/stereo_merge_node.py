@@ -116,8 +116,8 @@ class MergeNode(Node):
         rgb_width = get_p("image_width", 640)
         rgb_height = get_p("image_height", 480)
         
-        K_flat = get_p("camera_matrix/data", [0.0]*9)
-        D_flat = get_p("distortion_coefficients/data", [0.0]*5)
+        K_flat = get_p("camera_matrix.data", [0.0]*9)
+        D_flat = get_p("distortion_coefficients.data", [0.0]*5)
         K = np.array(K_flat).reshape((3, 3))
         D = np.array(D_flat)
 
@@ -134,24 +134,24 @@ class MergeNode(Node):
         vertical_FOV = get_p("verticalAperture", 10.0)
         sonar_features = get_p("sonar_features", True)
         
-        det_thresh_h = get_p("horizontal/threshold", 0.5)
+        det_thresh_h = get_p("horizontal.threshold", 0.5)
         self.merge.set_horizontal_sonar_params(sonar_range, det_thresh_h, vertical_FOV, sonar_features, self.fast_performance)
         
-        det_thresh_v = get_p("vertical/threshold", 0.5)
+        det_thresh_v = get_p("vertical.threshold", 0.5)
         self.merge.set_vertical_sonar_params(sonar_range, det_thresh_v, vertical_FOV, sonar_features, self.fast_performance)
         
         # CFAR parameters (Horizontal)
-        Ntc_h = get_p("horizontal/CFAR/Ntc", 10)
-        Ngc_h = get_p("horizontal/CFAR/Ngc", 10)
-        Pfa_h = get_p("horizontal/CFAR/Pfa", 0.1)
-        rank_h = get_p("horizontal/CFAR/rank", 5)
+        Ntc_h = get_p("horizontal.CFAR.Ntc", 10)
+        Ngc_h = get_p("horizontal.CFAR.Ngc", 10)
+        Pfa_h = get_p("horizontal.CFAR.Pfa", 0.1)
+        rank_h = get_p("horizontal.CFAR.rank", 5)
         self.merge.init_horizontal_CFAR(Ntc_h, Ngc_h, Pfa_h, rank_h)
 
         # CFAR parameters (Vertical)
-        Ntc_v = get_p("vertical/CFAR/Ntc", 10)
-        Ngc_v = get_p("vertical/CFAR/Ngc", 10)
-        Pfa_v = get_p("vertical/CFAR/Pfa", 0.1)
-        rank_v = get_p("vertical/CFAR/rank", 5)
+        Ntc_v = get_p("vertical.CFAR.Ntc", 10)
+        Ngc_v = get_p("vertical.CFAR.Ngc", 10)
+        Pfa_v = get_p("vertical.CFAR.Pfa", 0.1)
+        rank_v = get_p("vertical.CFAR.rank", 5)
         self.merge.init_vertical_CFAR(Ntc_v, Ngc_v, Pfa_v, rank_v)
 
         # Laser fields
@@ -226,9 +226,7 @@ class MergeNode(Node):
         start = time.perf_counter()
         
         # Call the merge logic (Assuming merge.merge_data returns valid numpy arrays)
-        # Note: Ensure stamp passed to merge_data is compatible if it uses it for math. 
-        # If it just passes it through, it's fine.
-        point_cloud, segmented_image, stamp2, h_feat_img, v_feat_img = self.merge.merge_data(
+        point_cloud, segmented_image, stamp2, horizontal_feature_image, vertical_feature_image = self.merge.merge_data(
             image, horizontal_sonar, vertical_sonar
         )
         
@@ -250,8 +248,8 @@ class MergeNode(Node):
         if segmented_image is not None and segmented_image.size > 0:
             # OpenCV encoding
             segmented_encoded = np.array(cv2.imencode('.jpg', segmented_image)[1]).tobytes()
-            h_feat_encoded = np.array(cv2.imencode('.jpg', h_feat_img)[1]).tobytes()
-            v_feat_encoded = np.array(cv2.imencode('.jpg', v_feat_img)[1]).tobytes()
+            horizontal_feature_encoded = np.array(cv2.imencode('.jpg', horizontal_feature_image)[1]).tobytes()
+            vertical_feature_encoded = np.array(cv2.imencode('.jpg', vertical_feature_image)[1]).tobytes()
 
             # Publish segmented image
             self.image_msg.header.stamp = stamp2
@@ -261,10 +259,10 @@ class MergeNode(Node):
             self.segmented_image_pub.publish(self.image_msg)
 
             # Publish feature images
-            self.image_msg.data = h_feat_encoded
+            self.image_msg.data = horizontal_feature_encoded
             self.horizontal_feature_image_pub.publish(self.image_msg)
             
-            self.image_msg.data = v_feat_encoded
+            self.image_msg.data = vertical_feature_encoded
             self.vertical_feature_image_pub.publish(self.image_msg)
 
 def main(args=None):

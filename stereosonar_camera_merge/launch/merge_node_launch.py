@@ -14,8 +14,14 @@ def generate_launch_description():
         default_value='marina',
         description='Environment name (e.g., marina, tank_disks)'
     )
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='true',
+        description='Use simulation (Gazebo/Bag) clock if true'
+    )
 
     environment = LaunchConfiguration('environment')
+    use_sim_time = LaunchConfiguration('use_sim_time')
 
     # Path setup
     pkg_path = get_package_share_directory('stereosonar_camera_merge')
@@ -55,6 +61,7 @@ def generate_launch_description():
                 sonar_param_file,
                 merge_param_file,
                 {
+                    'use_sim_time': use_sim_time,
                     'publish_rate': 5,
                     'horizontal_sonar_sub': '/sonar_oculus_node/M750d/ping',
                     'vertical_sonar_sub': '/sonar_oculus_node/M1200d/ping',
@@ -76,6 +83,7 @@ def generate_launch_description():
             executable='static_transform_publisher',
             name='world2baselink',
             arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
+            parameters=[{'use_sim_time': use_sim_time}],
             output='screen',
         )
 
@@ -84,6 +92,7 @@ def generate_launch_description():
             executable='rviz2',
             name='rviz',
             arguments=['-d', rviz_file],
+            parameters=[{'use_sim_time': use_sim_time}],
             output='screen',
         )
 
@@ -92,5 +101,6 @@ def generate_launch_description():
     # Return launch description
     return LaunchDescription([
         environment_arg,
+        use_sim_time_arg,
         OpaqueFunction(function=launch_setup),
     ])

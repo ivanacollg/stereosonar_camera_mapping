@@ -36,17 +36,17 @@ Each folder contains sensor data from each scenario shown in the paper:
 
 Each folder contains original ROS1 .bag data and converted data to ROS2 folder. 
 
-Additionally, trained image segmentation models for each scenario can be found in in the `yolo_models` folder. Download and place the model files in the `stereosonar_camera_merge/models` folder. 
+Additionally, trained image segmentation models for each scenario can be found in in the `models` folder. Download and place the model files in the `stereosonar_camera_merge/models` folder. 
 
 # Running Code
 Download segmentation yolo model and sesnor data before running the code. 
 Then run the code:
 ```
-    roslaunch stereosonar_camera_merge merge.launch
+    ros2 launch stereosonar_camera_merge merge.launch
 ```
 After starting the code, run the sesor data:
 ```
-    rosbag play [sample].bag --clock
+    ros2 bag play [sample].bag --clock
 ```
 ### Running code for different scenarious
 Different scenarious contain slightly different parameters for sonar range, monocular camera calibration, etc. 
